@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>♡</title>
+<meta name="description" content="A little something for you.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700;800&family=Quicksand:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,600;0,800;1,600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💗</text></svg>">
+</head>
+<body>
+
+<!-- ============ persistent canvas backdrop ============ -->
+<canvas id="scene"></canvas>
+
+<!-- ============ 1. TITLE ============ -->
+<section id="screen-title" class="screen is-active">
+  <div class="title-inner">
+    <p class="eyebrow" data-slot="eyebrow">a little something for</p>
+    <h1 class="title-name" data-slot="name">you</h1>
+    <p class="title-sub" data-slot="tagline">six months. let's make some noise about it.</p>
+    <button id="btn-start" class="btn btn-primary">
+      <span>press to begin</span>
+    </button>
+    <p class="title-hint">headphones on, if you can 🎧</p>
+  </div>
+</section>
+
+<!-- ============ 2. HOW TO PLAY ============ -->
+<section id="screen-howto" class="screen">
+  <div class="howto-inner">
+    <h2 class="howto-title">how to play</h2>
+    <ol class="howto-list">
+      <li><b>Hearts float in</b> and shrink toward the big heart in the middle.</li>
+      <li><b>Click</b> (or hit <kbd>Space</kbd>) the exact moment a heart lands on it.</li>
+      <li>Stay on the beat and the <b>love meter</b> fills.</li>
+      <li>Fill it &mdash; but the song is only <b>act one</b>&hellip; 👀🎁</li>
+    </ol>
+    <button id="btn-play" class="btn btn-primary"><span>i'm ready</span></button>
+    <button id="btn-calibrate" class="btn btn-ghost btn-sm">audio feels off? calibrate &rarr;</button>
+  </div>
+</section>
+
+<!-- ============ 3. GAME HUD ============ -->
+<section id="screen-game" class="screen">
+  <div class="hud hud-top">
+    <div class="meter">
+      <div class="meter-label">love meter</div>
+      <div class="meter-track">
+        <div class="meter-fill" id="meter-fill"></div>
+        <div class="meter-shine"></div>
+      </div>
+      <div class="meter-pct" id="meter-pct">0%</div>
+    </div>
+  </div>
+
+  <div class="combo-wrap">
+    <div class="combo" id="combo"><span id="combo-num">0</span><i>combo</i></div>
+  </div>
+
+  <div class="judge" id="judge"></div>
+
+  <div class="hud hud-bottom">
+    <div class="countin" id="countin"></div>
+  </div>
+
+  <button id="btn-quit" class="btn-quit" title="start over">↺</button>
+</section>
+
+<!-- ============ 3.5 STAGE INTERLUDES (acts II & III) ============ -->
+<section id="screen-stage" class="screen">
+  <div id="stage-card" class="stage-card">
+    <h2 class="stage-title"></h2>
+    <p class="stage-sub"></p>
+  </div>
+</section>
+
+<!-- ============ 4. RESULT (miss) ============ -->
+<section id="screen-result" class="screen">
+  <div class="result-inner">
+    <h2 class="result-title" id="result-title">so close!</h2>
+    <p class="result-sub" id="result-sub"></p>
+    <div class="result-stats" id="result-stats"></div>
+    <button id="btn-retry" class="btn btn-primary"><span>one more time</span></button>
+  </div>
+</section>
+
+<!-- ============ 5. GIFT BOX ============ -->
+<section id="screen-gift" class="screen">
+  <p class="gift-prompt" id="gift-prompt">you did it. 💗</p>
+
+  <div class="gift-stage">
+    <div class="gift-glow" id="gift-glow"></div>
+
+    <!-- the float wrapper bobs; box and bow ride it together -->
+    <div class="gift-float" id="gift-float">
+      <div class="giftbox" id="giftbox">
+        <!-- lid -->
+        <div class="lid" id="lid">
+          <div class="lid-top"></div>
+          <div class="lid-side lid-front"></div>
+          <div class="lid-side lid-back"></div>
+          <div class="lid-side lid-left"></div>
+          <div class="lid-side lid-right"></div>
+        </div>
+
+        <!-- ribbon straps: two across the lid top, four wrapping the sides -->
+        <div class="ribbons" id="ribbons">
+          <div class="ribbon rtop rtop-x"></div>
+          <div class="ribbon rtop rtop-y"></div>
+          <div class="ribbon rdrop rd-f"></div>
+          <div class="ribbon rdrop rd-b"></div>
+          <div class="ribbon rdrop rd-l"></div>
+          <div class="ribbon rdrop rd-r"></div>
+        </div>
+
+        <!-- base -->
+        <div class="base">
+          <div class="base-face base-front"></div>
+          <div class="base-face base-back"></div>
+          <div class="base-face base-left"></div>
+          <div class="base-face base-right"></div>
+          <div class="base-inner"></div>
+        </div>
+      </div>
+
+      <!-- the bow is a 2D overlay pinned above the lid: the camera never
+           moves, so it reads as sitting on the box — and dragging it is
+           plain 2D math instead of a fight with rotation matrices -->
+      <div class="bow" id="bow">
+        <div class="bow-loop bow-l"></div>
+        <div class="bow-loop bow-r"></div>
+        <div class="bow-tail bow-tl"></div>
+        <div class="bow-tail bow-tr"></div>
+        <div class="bow-knot"></div>
+      </div>
+    </div>
+  </div>
+
+  <p class="gift-hint" id="gift-hint">drag the bow to untie it</p>
+</section>
+
+<!-- ============ 6. REVEAL ============ -->
+<section id="screen-reveal" class="screen">
+  <div class="reveal-inner">
+    <h1 class="reveal-head">
+      <span class="rw">HAPPY</span>
+      <span class="rw">6&nbsp;MONTH</span>
+      <span class="rw rw-gold">ANNIVERSARY</span>
+      <span class="rw rw-bang">!!!!</span>
+    </h1>
+
+    <p class="reveal-note" data-slot="note"></p>
+
+    <!-- golden ticket -->
+    <div class="ticket-wrap">
+      <div class="ticket" id="ticket">
+        <div class="ticket-shine"></div>
+        <div class="ticket-edge ticket-edge-l"></div>
+        <div class="ticket-edge ticket-edge-r"></div>
+        <div class="ticket-body">
+          <div class="ticket-rule"></div>
+          <p class="ticket-kicker">✦ GOLDEN TICKET ✦</p>
+          <h2 class="ticket-title" data-slot="ticketTitle">ONE&nbsp;KISS</h2>
+          <p class="ticket-fine" data-slot="ticketFine">(or more 😉)</p>
+          <div class="ticket-rule"></div>
+          <p class="ticket-terms" data-slot="ticketTerms">
+            This ticket entitles the bearer to redeem the above,
+            at any time, in any place, no questions asked.
+            Non-transferable. Infinitely renewable. Never expires.
+          </p>
+          <div class="ticket-foot">
+            <span data-slot="ticketSerial">№ 000000</span>
+            <span data-slot="ticketSigned">signed, me</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <button id="btn-again" class="btn btn-ghost btn-sm">play it again ↺</button>
+  </div>
+</section>
+
+<!-- ============ calibration ============ -->
+<section id="screen-cal" class="screen">
+  <div class="cal-inner">
+    <h2 class="howto-title">calibration</h2>
+    <p class="cal-copy">Tap <kbd>Space</kbd> or click on every beat. I'll measure your delay and correct for it.</p>
+    <div class="cal-dot" id="cal-dot"></div>
+    <p class="cal-read" id="cal-read">taps: 0</p>
+    <div class="cal-btns">
+      <button id="btn-cal-save" class="btn btn-primary"><span>save &amp; back</span></button>
+      <button id="btn-cal-reset" class="btn btn-ghost btn-sm">reset to 0ms</button>
+    </div>
+  </div>
+</section>
+
+<script src="js/config.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/song.js"></script>
+<script src="js/beatmap.js"></script>
+<script src="js/scene.js"></script>
+<script src="js/game.js"></script>
+<script src="js/stages.js"></script>
+<script src="js/gift.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>

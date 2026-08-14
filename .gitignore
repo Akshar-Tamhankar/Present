@@ -1,0 +1,13 @@
+# macOS noise (this project lives on an exFAT external drive, which sheds
+# AppleDouble ._* files next to everything)
+.DS_Store
+._*
+.Spotlight-V100
+.Trashes
+.fseventsd
+
+# local tool state
+.claude/
+
+# nothing is ever built or installed, but just in case
+node_modules/
