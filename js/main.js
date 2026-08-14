@@ -24,6 +24,10 @@
     if (el) el.classList.add('is-active');
     current = id;
     document.body.dataset.screen = id;
+    if (window.FX) {
+      if (id === 'title') FX.titleIn();
+      else if (id === 'result') FX.statsCount();
+    }
   }
 
   /* ====================================================================== */
@@ -56,7 +60,9 @@
         // Beat grid for the background throb: every other note is close enough.
         const grid = [];
         for (let i = 0; i < beats.length; i += 2) grid.push(beats[i]);
-        song = { beats: beats, beatGrid: grid };
+        // fever the middle third of a custom track — better than nothing
+        song = { beats: beats, beatGrid: grid,
+                 kiai: [{ start: dur * 0.38, end: dur * 0.62 }] };
       } else {
         // --- built-in generated track ---
         const r = await Song.render(CONFIG.bpm || 100);
@@ -64,7 +70,7 @@
         const spb = 60 / r.bpm;
         const grid = [];
         for (let t = r.lead; t < r.duration - 2; t += spb) grid.push(t);
-        song = { beats: r.beats, beatGrid: grid };
+        song = { beats: r.beats, beatGrid: grid, kiai: r.kiai || [] };
       }
       loaded = true;
       return song;
@@ -107,6 +113,7 @@
     show('game');
     Game.load(song.beats, {
       beatGrid: song.beatGrid,
+      kiai: song.kiai,
       approach: CONFIG.approachTime,
       offsetMs: CONFIG.audioOffsetMs,
       onFinish: onRoundEnd
@@ -154,12 +161,7 @@
   }
 
   function revealSequence() {
-    Scene.celebrate();
-    setTimeout(function () { Scene.celebrate(); }, 900);
-    const ticket = $('#ticket');
-    ticket.classList.remove('in');
-    void ticket.offsetWidth;
-    ticket.classList.add('in');
+    FX.reveal();
   }
 
   function restart() {
@@ -307,6 +309,7 @@
 
     document.addEventListener('pointerdown', onPointerDown);
     document.addEventListener('keydown', onKey);
+    FX.mountTilt();
 
     // A backgrounded tab throttles rAF and the song runs on without us, so
     // the run is unsalvageable. Grace period first: brief blips (screenshots,

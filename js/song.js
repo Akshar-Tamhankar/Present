@@ -200,6 +200,7 @@ window.Song = (function () {
 
     nseed = 1234567;
     const beats = [];
+    const kiai = [];          // fever windows: the 'eighth' chorus blocks
     const at = function (beat) { return lead + beat * spb; };
 
     let beatCursor = 0;
@@ -252,6 +253,11 @@ window.Song = (function () {
         beats.push(+at(base + pat[i]).toFixed(4));
       }
 
+      // chorus blocks are kiai (fever) sections
+      if (blk.notes === 'eighth') {
+        kiai.push({ start: +at(base).toFixed(3), end: +at(base + blk.len).toFixed(3) });
+      }
+
       beatCursor += blk.len;
       barCursor  += bars;
     }
@@ -278,7 +284,7 @@ window.Song = (function () {
       L[n - 1 - i] *= f; R[n - 1 - i] *= f;
     }
 
-    return { L: L, R: R, beats: beats, duration: duration, lead: lead, spb: spb };
+    return { L: L, R: R, beats: beats, kiai: kiai, duration: duration, lead: lead, spb: spb };
   }
 
   /* ======================================================================
@@ -303,7 +309,7 @@ window.Song = (function () {
     }
 
     return {
-      buffer: buffer, beats: pcm.beats, bpm: bpm,
+      buffer: buffer, beats: pcm.beats, kiai: pcm.kiai, bpm: bpm,
       duration: pcm.duration, lead: pcm.lead, spb: pcm.spb
     };
   }

@@ -24,6 +24,8 @@ window.Game = (function () {
   let offsetMs = 0;
   let endsAt = 0;
   let countInFrom = 0;
+  let kiaiWindows = [];
+  let inKiai = false;
 
   let onFinish = function () {};
 
@@ -62,6 +64,9 @@ window.Game = (function () {
     approach = opts.approach || CONFIG.approachTime || 1.55;
     offsetMs = opts.offsetMs || 0;
     onFinish = opts.onFinish || function () {};
+    kiaiWindows = opts.kiai || [];
+    inKiai = false;
+    Scene.setKiai(false);
 
     // Mercy: after a failed attempt, widen the windows.
     const base = opts.windows || CONFIG.windows;
@@ -104,6 +109,8 @@ window.Game = (function () {
   function input(evt) {
     if (!running) return;
     const t = (evt ? AudioEngine.positionAtEvent(evt) : AudioEngine.position()) - offsetMs / 1000;
+    const hitX = evt && typeof evt.clientX === 'number' && evt.clientX > 0 ? evt.clientX : null;
+    const hitY = evt && typeof evt.clientY === 'number' && evt.clientY > 0 ? evt.clientY : null;
 
     // nearest unjudged note
     let best = -1, bestD = Infinity;
@@ -116,7 +123,7 @@ window.Game = (function () {
     }
 
     const ms = bestD * 1000;
-    if (best < 0 || ms > win.good) { judgeStray(); return; }
+    if (best < 0 || ms > win.good) { judgeStray(hitX, hitY); return; }
 
     const n = notes[best];
     n.off = (t - n.t) * 1000;
@@ -131,16 +138,17 @@ window.Game = (function () {
     Scene.punch(q);
     Scene.burst(q);
     AudioEngine.sfx[q]();
-    flashJudge(q);
+    Scene.judgment(q, praise(q), hitX, hitY);
+    if (stats.combo > 0 && stats.combo % 10 === 0) Scene.milestone(stats.combo);
     renderHud();
   }
 
-  function judgeStray() {
+  function judgeStray(hitX, hitY) {
     stats.stray++;
     stats.combo = 0;
     Scene.punch('stray');
     AudioEngine.sfx.miss();
-    flashJudge('stray');
+    Scene.judgment('stray', praise('stray'), hitX, hitY);
     renderHud();
   }
 
@@ -162,9 +170,21 @@ window.Game = (function () {
         n.judged = 'miss';
         stats.miss++;
         stats.combo = 0;
-        flashJudge('miss');
+        Scene.judgment('miss', praise('miss'), null, null);
         renderHud();
       } else if (n.t > t + 0.5) break;
+    }
+
+    // kiai (fever) sections
+    let fever = false;
+    for (let i = 0; i < kiaiWindows.length; i++) {
+      if (t >= kiaiWindows[i].start && t < kiaiWindows[i].end) { fever = true; break; }
+    }
+    if (fever !== inKiai) {
+      inKiai = fever;
+      Scene.setKiai(fever);
+      const track = document.querySelector('.meter-track');
+      if (track) track.classList.toggle('fever', fever);
     }
 
     // musical throb
@@ -221,12 +241,10 @@ window.Game = (function () {
     }
   }
 
-  function flashJudge(q) {
+  /** Pick a random line for a judgment — rendered by Scene at the hit point. */
+  function praise(q) {
     const list = PRAISE[q] || [''];
-    els.judge.textContent = list[(Math.random() * list.length) | 0];
-    els.judge.className = 'judge j-' + q;
-    void els.judge.offsetWidth;
-    els.judge.classList.add('pop');
+    return list[(Math.random() * list.length) | 0];
   }
 
   /* ====================================================================== */

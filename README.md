@@ -13,10 +13,13 @@ Then the gift box: drag the bow to untie it, lift the lid, and the reveal is
 **HAPPY 6 MONTH ANNIVERSARY!!!!** plus a golden **redeem-a-kiss** ticket.
 
 The scene is a Ghost-of-Tsushima-style vista, love-themed: cherry blossom
-canopy hanging into frame, sunrise fog over a mirror pond, god rays, and a
-carpet of petals and hearts. Everything is drawn in code — no image assets,
-loads instantly. Nothing can be lost, only retried — and every retry gets a
-little kinder.
+canopy hanging into frame, sunrise fog over a mirror pond, god rays, wind
+streaks, and a carpet of petals and hearts — all drawn in code, with mouse
+parallax for depth. The chorus goes **kiai** (osu-style fever): gold target,
+rushing petals, screen-shake perfects, combo milestones. DOM choreography
+(title letters, the reveal, stat counters, ticket tilt) runs on a vendored
+anime.js; everything else is hand-rolled canvas. Nothing can be lost, only
+retried — and every retry gets a little kinder.
 
 ## Run it locally
 
@@ -82,8 +85,10 @@ js/audio.js         Web Audio engine + sample-accurate song clock
 js/song.js          built-in synthesized song (direct-DSP render)
 js/beatmap.js       beat times for your own song
 js/scene.js         the whole painted scene + game rendering
-js/game.js          timing, judging, scoring
+js/game.js          timing, judging, scoring, kiai tracking
 js/gift.js          bow-drag + lid-lift unwrapping
+js/fx.js            DOM choreography (anime.js): title, reveal, tilt
+js/vendor/anime.min.js  anime.js v3.2.2 (MIT), vendored so it works offline
 js/main.js          screen flow and wiring
 tools/serve.js      tiny local dev server
 tools/beatmapper.html  tap-along beatmap maker

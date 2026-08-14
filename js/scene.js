@@ -45,6 +45,18 @@ window.Scene = (function () {
 
   let petals = [], bokeh = [], sparks = [], rings = [];
 
+  /* --- juice state ------------------------------------------------------ */
+  const par = { x: 0, y: 0, tx: 0, ty: 0 };   // mouse parallax, lerped
+  const shake = { amp: 0, t: 0 };             // decaying screen shake
+  let kiai = false;                            // osu-style fever sections
+  let kiaiFlash = 0;                           // white pulse on kiai entry
+  let beatFlash = 0;                           // per-beat glow during kiai
+  let floaters = [];                           // judgment text at hit point
+  let streaks = [];                            // Tsushima-style wind lines
+  let streakTimer = 3.5;
+  const REDUCED = window.matchMedia &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
   /* --- deterministic rng, so the world is identical every load ---------- */
   let seed = 987654321;
   function rnd() {
@@ -63,8 +75,19 @@ window.Scene = (function () {
     ctx = cv.getContext('2d', { alpha: false });
     resize();
     window.addEventListener('resize', debounce(resize, 120));
+    if (!REDUCED) {
+      window.addEventListener('mousemove', function (e) {
+        par.tx = (e.clientX / W - 0.5) * 2;
+        par.ty = (e.clientY / H - 0.5) * 2;
+      }, { passive: true });
+    }
     seedParticles();
     last = performance.now();
+    // Paint one frame right now: rAF doesn't fire in hidden tabs, and a
+    // texted link often opens in one — the world must already be there
+    // the moment the tab is fronted.
+    step(0.016);
+    draw();
     raf = requestAnimationFrame(loop);
   }
 
@@ -396,7 +419,7 @@ window.Scene = (function () {
 
       const puff = function (px, py, r) {
         // top band anywhere, or low along the left margin — never the centre
-        if (py < dropY || (px < leftX && py < H * 0.50)) {
+        if (py < dropY || (px < leftX && py < H * 0.60)) {
           puffs.push({ x: px, y: py, r: r });
         }
       };
@@ -601,12 +624,40 @@ window.Scene = (function () {
     heart.rotV += dir * (9.5 * power + rr(0, 2.5));
     heart.glowV += 5.0 * power;
     if (quality === 'stray') heart.sad = 1;
+    if (!REDUCED && quality === 'perfect') shake.amp = Math.max(shake.amp, 3.2);
   }
 
   function pulse(strength) {
     heart.scaleV += 1.5 * (strength == null ? 1 : strength);
     heart.glowV += 1.4;
     rings.push({ r: 0, a: 0.30, w: 3 });
+    if (kiai) beatFlash = 1;
+  }
+
+  function setKiai(on) {
+    if (on === kiai) return;
+    kiai = on;
+    if (on) {
+      kiaiFlash = 1;
+      if (!REDUCED) shake.amp = Math.max(shake.amp, 5);
+      spawnStreaks(4);
+      burst('perfect');
+    }
+  }
+
+  /** Judgment text where the click landed (osu-style). */
+  function judgment(quality, text, x, y) {
+    const cx = (x == null) ? W / 2 : x;
+    const cy = (y == null) ? centreY() - baseSize() * 1.7 : y - 26;
+    floater(quality, text, cx, cy);
+  }
+
+  /** Combo milestone: big gold callout + burst + kick. */
+  function milestone(n) {
+    floater('combo', n + ' COMBO', W / 2, centreY() - baseSize() * 2.3);
+    burst('perfect');
+    if (!REDUCED) shake.amp = Math.max(shake.amp, 4.5);
+    spawnStreaks(2);
   }
 
   function burst(quality) {
@@ -703,11 +754,39 @@ window.Scene = (function () {
     const targetA = (mode === 'play') ? 1 : 0;
     heart.alpha += (targetA - heart.alpha) * Math.min(1, dt * 5.5);
 
+    /* --- juice ---------------------------------------------------------- */
+    par.x += (par.tx - par.x) * Math.min(1, dt * 3.2);
+    par.y += (par.ty - par.y) * Math.min(1, dt * 3.2);
+
+    shake.t += dt * 34;
+    shake.amp = Math.max(0, shake.amp - dt * 26);
+    kiaiFlash = Math.max(0, kiaiFlash - dt * 1.8);
+    beatFlash = Math.max(0, beatFlash - dt * 3.4);
+
+    for (let i = floaters.length - 1; i >= 0; i--) {
+      const f = floaters[i];
+      f.t += dt / f.dur;
+      if (f.t >= 1) floaters.splice(i, 1);
+    }
+
+    streakTimer -= dt * (kiai ? 3.2 : 1);
+    if (streakTimer <= 0) {
+      spawnStreaks(kiai ? 3 : 1 + ((rnd() * 2) | 0));
+      streakTimer = rr(4.5, 8);
+    }
+    for (let i = streaks.length - 1; i >= 0; i--) {
+      const s = streaks[i];
+      s.t += dt / s.dur;
+      if (s.t >= 1) streaks.splice(i, 1);
+    }
+
+    // fever wind: petals rush during kiai
+    const gust = kiai ? 2.1 : 1;
     for (let i = 0; i < petals.length; i++) {
       const p = petals[i];
-      p.y += p.vy * dt;
+      p.y += p.vy * gust * dt;
       p.swayP += p.swaySpd * dt;
-      p.x += (p.vx + Math.sin(p.swayP) * p.sway * 0.05) * dt;
+      p.x += (p.vx * gust + Math.sin(p.swayP) * p.sway * 0.05) * dt;
       p.rot += p.rotV * dt;
       p.flut += p.flutSpd * dt;
       // land on the bank rather than falling through the world
@@ -742,12 +821,23 @@ window.Scene = (function () {
   /* ---------------------------------------------------------------------- */
 
   function draw() {
-    if (backdropCv) ctx.drawImage(backdropCv, 0, 0, W, H);
-    else { ctx.fillStyle = '#160a2c'; ctx.fillRect(0, 0, W, H); }
+    // decaying sinusoid shake — canvas only, the DOM HUD stays put
+    const shx = shake.amp > 0.01 ? Math.sin(shake.t) * shake.amp : 0;
+    const shy = shake.amp > 0.01 ? Math.cos(shake.t * 1.3) * shake.amp * 0.7 : 0;
+
+    ctx.save();
+    ctx.translate(shx, shy);
+
+    // the world slides a few px against the cursor — cheap cinematic depth.
+    // Overdraw by the max offset so parallax never exposes canvas edges.
+    if (backdropCv) {
+      ctx.drawImage(backdropCv, -8 + par.x * -6, -6 + par.y * -4, W + 16, H + 12);
+    } else { ctx.fillStyle = '#160a2c'; ctx.fillRect(-8, -6, W + 16, H + 12); }
 
     drawCentreGlow();
     drawBokeh();
     drawTree();
+    drawStreaks();
     drawPetals();
     drawPlayScrim();
     if (mode === 'play') drawTarget();
@@ -755,22 +845,26 @@ window.Scene = (function () {
     if (mode === 'play') drawNotes();
     drawHeart();
     drawSparks();
+    drawFloaters();
     drawRays();
+    drawKiai();
     drawGrain();
     drawVignette();
+    ctx.restore();
   }
 
   function drawTree() {
     if (!treeCv) return;
     // Sway about the corner the boughs enter from, so the tips travel
-    // furthest and the heavy wood barely moves.
+    // furthest and the heavy wood barely moves. Nearest layer = most parallax.
     const ax = TREE_AX(), ay = TREE_AY();
     const a = Math.sin(tGlobal * 0.36) * 0.0060 + Math.sin(tGlobal * 0.91) * 0.0022;
     ctx.save();
+    ctx.translate(par.x * -14, par.y * -9);
     ctx.translate(ax, ay);
     ctx.rotate(a);
     ctx.translate(-ax, -ay);
-    ctx.drawImage(treeCv, 0, 0, W, H);
+    ctx.drawImage(treeCv, -10, -8, W + 20, H + 16);
     ctx.restore();
   }
 
@@ -850,9 +944,16 @@ window.Scene = (function () {
     const cx = W / 2, cy = centreY(), s = baseSize();
     ctx.save();
     ctx.lineWidth = 2.5;
-    ctx.strokeStyle = 'rgba(255,255,255,0.5)';
-    ctx.shadowColor = 'rgba(255,255,255,0.5)';
-    ctx.shadowBlur = 10;
+    if (kiai) {   // fever sections run gold, osu-style
+      const th = 0.7 + beatFlash * 0.3;
+      ctx.strokeStyle = 'rgba(255,222,130,' + th + ')';
+      ctx.shadowColor = 'rgba(255,200,80,0.9)';
+      ctx.shadowBlur = 14 + beatFlash * 12;
+    } else {
+      ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+      ctx.shadowColor = 'rgba(255,255,255,0.5)';
+      ctx.shadowBlur = 10;
+    }
     ctx.setLineDash([7, 9]);
     ctx.lineDashOffset = -tGlobal * 22;
     heartPath(ctx, cx, cy, s * 1.30, 0);
@@ -903,6 +1004,19 @@ window.Scene = (function () {
       const hot = Math.min(1, p * 1.1);
       const col = 'rgba(255,' + Math.round(255 - 105 * hot) + ',' +
                   Math.round(255 - 105 * hot) + ',';
+
+      // neon comet trail once a note is committed to the target — two echo
+      // outlines lagging behind its shrink read as motion blur
+      if (p > 0.45 && dt >= 0) {
+        for (let e = 1; e <= 2; e++) {
+          const es = scale + s * 0.09 * e;
+          ctx.globalAlpha = 1;
+          ctx.lineWidth = 2;
+          ctx.strokeStyle = col + (a * 0.22 / e) + ')';
+          heartPath(ctx, cx, cy, es, 0);
+          ctx.stroke();
+        }
+      }
 
       ctx.globalAlpha = 1;
       ctx.lineWidth = 3 + 3.5 * p;
@@ -983,6 +1097,115 @@ window.Scene = (function () {
     ctx.restore();
   }
 
+  /* --- Tsushima wind: thin bright lines sweeping through the frame ------ */
+
+  function spawnStreaks(n) {
+    for (let i = 0; i < n; i++) {
+      const y = rr(0.16, 0.62);
+      streaks.push({
+        x0: rr(-0.15, 0.25), y0: y,
+        len: rr(0.22, 0.42),
+        drop: rr(0.02, 0.07),           // gentle downhill drift
+        bow: rr(-0.03, 0.05),           // curve of the gust
+        t: 0, dur: rr(1.3, 2.1),
+        w: rr(1, 2.2)
+      });
+    }
+  }
+
+  function drawStreaks() {
+    ctx.save();
+    ctx.lineCap = 'round';
+    for (let i = 0; i < streaks.length; i++) {
+      const s = streaks[i];
+      // head runs 0→1 first, tail follows: a comet of wind
+      const head = Math.min(1, s.t * 1.35);
+      const tail = Math.max(0, s.t * 1.35 - 0.42);
+      if (tail >= 1) continue;
+      const a = Math.sin(Math.min(1, s.t) * Math.PI) * 0.5;
+
+      const X = function (u) { return (s.x0 + (s.len + 0.55) * u) * W; };
+      const Y = function (u) {
+        return (s.y0 + s.drop * u + Math.sin(u * Math.PI) * s.bow) * H;
+      };
+
+      ctx.strokeStyle = 'rgba(255,240,246,' + a.toFixed(3) + ')';
+      ctx.lineWidth = s.w;
+      ctx.beginPath();
+      const STEPS = 14;
+      for (let k = 0; k <= STEPS; k++) {
+        const u = tail + (head - tail) * (k / STEPS);
+        if (k === 0) ctx.moveTo(X(u), Y(u)); else ctx.lineTo(X(u), Y(u));
+      }
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  /* --- judgment floaters at the point of the click ---------------------- */
+
+  const FLOATER_STYLE = {
+    perfect: { col: '#ffe89a', glow: 'rgba(255,200,60,0.95)', size: 1.15 },
+    great:   { col: '#ffd9ea', glow: 'rgba(255,120,190,0.9)', size: 1.0 },
+    good:    { col: '#d8e6ff', glow: 'rgba(150,190,255,0.85)', size: 0.9 },
+    miss:    { col: 'rgba(255,225,235,0.75)', glow: 'rgba(80,10,50,0.6)', size: 0.78 },
+    stray:   { col: 'rgba(255,225,235,0.75)', glow: 'rgba(80,10,50,0.6)', size: 0.78 },
+    combo:   { col: '#fff3c4', glow: 'rgba(255,190,60,1)', size: 1.5 }
+  };
+
+  function floater(kind, text, x, y) {
+    const st = FLOATER_STYLE[kind] || FLOATER_STYLE.good;
+    floaters.push({
+      text: text, x: x, y: y,
+      col: st.col, glow: st.glow,
+      px: st.size, t: 0,
+      dur: kind === 'combo' ? 1.1 : 0.75,
+      drift: rr(-14, 14)
+    });
+  }
+
+  function drawFloaters() {
+    if (!floaters.length) return;
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    for (let i = 0; i < floaters.length; i++) {
+      const f = floaters[i];
+      // pop in fast, ride up, fade at the end
+      const pop = Math.min(1, f.t * 6);
+      const scale = 0.6 + 0.4 * (pop < 1 ? 1.35 - 0.35 * pop : 1);
+      const rise = f.t * 52;
+      const a = f.t > 0.6 ? 1 - (f.t - 0.6) / 0.4 : 1;
+      const px = Math.round(Math.min(W, H) * 0.032 * f.px * scale);
+      ctx.font = '800 ' + px + 'px "Baloo 2", sans-serif';
+      ctx.globalAlpha = a;
+      ctx.shadowColor = f.glow;
+      ctx.shadowBlur = 14;
+      ctx.fillStyle = f.col;
+      ctx.fillText(f.text, f.x + f.drift * f.t, f.y - rise);
+    }
+    ctx.restore();
+  }
+
+  /* --- kiai: the fever overlay ------------------------------------------ */
+
+  function drawKiai() {
+    if (kiaiFlash > 0.005) {
+      ctx.fillStyle = 'rgba(255,240,220,' + (kiaiFlash * 0.28).toFixed(3) + ')';
+      ctx.fillRect(-10, -10, W + 20, H + 20);
+    }
+    if (!kiai) return;
+    // breathing golden edge-light while the chorus burns
+    const breathe = 0.5 + 0.5 * Math.sin(tGlobal * 4.2) ;
+    const a = 0.10 + 0.10 * breathe + beatFlash * 0.16;
+    const g = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.34,
+                                       W / 2, H / 2, Math.max(W, H) * 0.75);
+    g.addColorStop(0, 'rgba(255,190,120,0)');
+    g.addColorStop(1, 'rgba(255,160,90,' + a.toFixed(3) + ')');
+    ctx.fillStyle = g;
+    ctx.fillRect(-10, -10, W + 20, H + 20);
+  }
+
   /** Volumetric shafts fanning out of the low sun. */
   function drawRays() {
     const sx = W * SUN_X, sy = H * SUN_Y;
@@ -1036,6 +1259,7 @@ window.Scene = (function () {
     mount: mount,
     setNotes: setNotes, setClock: setClock, setMode: setMode,
     punch: punch, pulse: pulse, burst: burst, celebrate: celebrate,
+    setKiai: setKiai, judgment: judgment, milestone: milestone,
     get heartCentre() { return { x: W / 2, y: centreY(), s: baseSize() }; }
   };
 })();
