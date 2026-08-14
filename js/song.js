@@ -51,16 +51,20 @@ window.Song = (function () {
      mode: 'target' | 'tunnel' | 'catch' | 'qte'
      feel: 'soft' | 'groove' | 'build' | 'drop' | 'finale'
      ---------------------------------------------------------------------- */
+  // Eleven different games in one song — every section switches the mode.
   const BLOCKS = [
     { len: 8,  feel: 'soft',   mode: 'target', notes: 'none'    },  // intro
-    { len: 16, feel: 'groove', mode: 'target', notes: 'quarter' },  // verse A
-    { len: 8,  feel: 'build',  mode: 'target', notes: 'buildup' },  // build 1
-    { len: 16, feel: 'drop',   mode: 'tunnel', notes: 'drop', kiai: true },   // DROP 1
-    { len: 8,  feel: 'soft',   mode: 'catch',  notes: 'none'    },  // breakdown → catch
-    { len: 8,  feel: 'groove', mode: 'target', notes: 'swing'   },  // verse B
-    { len: 8,  feel: 'build',  mode: 'tunnel', notes: 'buildup' },  // build 2 (tunnel opens early)
-    { len: 16, feel: 'drop',   mode: 'tunnel', notes: 'drop', kiai: true },   // DROP 2
-    { len: 8,  feel: 'finale', mode: 'qte',    notes: 'qte'     },  // QTE finale
+    { len: 16, feel: 'groove', mode: 'target', notes: 'quarter' },  // verse A — home
+    { len: 8,  feel: 'build',  mode: 'volley', notes: 'buildup' },  // build 1 — cupid arrows
+    { len: 16, feel: 'drop',   mode: 'tunnel', notes: 'drop', kiai: true },  // DROP 1
+    { len: 8,  feel: 'soft',   mode: 'catch',  notes: 'none'    },  // breakdown — catch
+    { len: 8,  feel: 'groove', mode: 'flight', notes: 'swing'   },  // verse B — love letter
+    { len: 8,  feel: 'build',  mode: 'flip',   notes: 'buildup' },  // build 2 — gravity portal
+    { len: 16, feel: 'drop',   mode: 'orbit',  notes: 'drop', kiai: true },  // DROP 2 — radar sweep
+    { len: 8,  feel: 'groove', mode: 'sweet',  notes: 'sweets'  },  // chocolate box
+    { len: 8,  feel: 'groove', mode: 'bloom',  notes: 'swing'   },  // roses on the vine
+    { len: 8,  feel: 'build',  mode: 'sky',    notes: 'lift'    },  // above the clouds, rising
+    { len: 8,  feel: 'finale', mode: 'qte',    notes: 'qte'     },  // finale
     { len: 4,  feel: 'soft',   mode: 'target', notes: 'none'    }   // outro
   ];
 
@@ -71,6 +75,8 @@ window.Song = (function () {
     buildup: [0, 1, 2, 3, 4, 4.5, 5, 5.5, 6, 6.5, 7, 7.5],
     drop:    [0, 0.5, 1, 2, 2.5, 3, 4, 4.5, 5, 6, 6.5, 7,
               8, 8.5, 9, 10, 10.5, 11, 12, 12.5, 13, 14, 14.5, 15],
+    sweets:  [0, 1, 2.5, 4, 5, 6.5],
+    lift:    [0, 1, 2, 3, 4, 5, 6, 7],
     qte:     [0.5, 2.5, 4.5, 6.5]
   };
 

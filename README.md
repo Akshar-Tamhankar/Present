@@ -1,18 +1,24 @@
 # ♡ six months
 
-A love-themed rhythm gauntlet where **the song is the level**. One track,
-128 BPM, real build-ups and drops — and every section transforms the game:
+A love-themed rhythm gauntlet where **the song is the level**. One 128 BPM
+track with real build-ups and drops — and **eleven** gameplay modes, one per
+section, every switch called by a gold banner:
 
-- **Verse** — hearts shrink onto the big heart; click on the beat.
-- **Build** — snare rolls, risers, the world holds its breath.
-- **DROP** — the vista rips away into a **neon heart tunnel** (kiai: gold
-  rings, screen shake, fever meter) with notes racing out of the void.
-- **Breakdown** — a **catch interlude**: hearts drift by, click them all.
-- **Second drop** — back down the tunnel, faster.
-- **Finale** — half-time chords and QTE moments: a ring seals on a scattered
-  heart; strike exactly then.
+- **home** — hearts shrink onto the big heart; click on the beat
+- **cupid's volley** — arrows loosed from the wings; click as they strike
+- **the tunnel** — the vista rips away; notes race out of a neon void
+- **catch us** — drifting hearts, click them all, whiffs are free
+- **love letter** — a paper dart glides; click through every rose gate
+- **starfall** — comet hearts fall to a line… then a portal flips gravity
+- **our orbit** — a radar sweep; click as the pair passes each spark
+- **sweet tooth** — truffles pop from a valentine box; click at the top
+- **in bloom** — roses unfurl along a vine; click at full bloom
+- **above the clouds** — the world becomes a sunrise cloudscape
+- **the finale** — QTE rings sealing on scattered hearts
 
-Phase banners call every switch. Then the gift box: drag the bow, lift the
+One mechanic underneath it all — click on time — so it stays easy to *play*
+while never looking the same twice. Tuned kind by default (wide windows, low
+meter bar, strays keep your combo, retries widen everything). Then the gift box: drag the bow, lift the
 lid — **HAPPY 6 MONTH ANNIVERSARY!!!!** and a golden **redeem-a-kiss**
 ticket.
 

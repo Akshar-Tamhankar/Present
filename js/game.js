@@ -75,6 +75,7 @@ window.Game = (function () {
 
     phases = opts.phases || [];
     Scene.setPhases(phases);
+    if (opts.spb) Scene.setSpb(opts.spb);
     curMode = 'target';
     catchPlan = [];
     catchIdx = 0;
@@ -183,8 +184,7 @@ window.Game = (function () {
   }
 
   function judgeStray(hitX, hitY) {
-    stats.stray++;
-    stats.combo = 0;
+    stats.stray++;                 // combo survives — casual players double-click
     Scene.punch('stray');
     AudioEngine.sfx.miss();
     Scene.judgment('stray', praise('stray'), hitX, hitY);
@@ -224,6 +224,13 @@ window.Game = (function () {
       const B = {
         tunnel: ['THE TUNNEL', 'same beat — new world'],
         catch:  ['CATCH US ♡', 'click every heart!'],
+        volley: ["CUPID'S VOLLEY", 'click as each arrow strikes'],
+        flight: ['LOVE LETTER', 'click through every gate'],
+        flip:   ['STARFALL', 'click at the line — mind the portal'],
+        orbit:  ['OUR ORBIT', 'click as we pass each spark'],
+        sweet:  ['SWEET TOOTH', 'click each chocolate as it pops up'],
+        bloom:  ['IN BLOOM', 'click every rose at full bloom'],
+        sky:    ['ABOVE THE CLOUDS', 'same rules — new heights'],
         qte:    ['THE FINALE', 'strike when the ring seals'],
         target: ['BACK TO US', '']
       }[m];

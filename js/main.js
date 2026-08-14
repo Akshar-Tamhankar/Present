@@ -63,18 +63,21 @@
         // synthesise a reasonable ride for a custom track: tunnel through
         // the middle drops, a catch break between them, QTE at the end
         const ph = [
-          { mode: 'target', start: 0,          end: dur * 0.30 },
-          { mode: 'tunnel', start: dur * 0.30, end: dur * 0.48 },
-          { mode: 'catch',  start: dur * 0.48, end: dur * 0.58 },
-          { mode: 'target', start: dur * 0.58, end: dur * 0.70 },
-          { mode: 'tunnel', start: dur * 0.70, end: dur * 0.88 },
+          { mode: 'target', start: 0,          end: dur * 0.22 },
+          { mode: 'volley', start: dur * 0.22, end: dur * 0.32 },
+          { mode: 'tunnel', start: dur * 0.32, end: dur * 0.46 },
+          { mode: 'catch',  start: dur * 0.46, end: dur * 0.55 },
+          { mode: 'flight', start: dur * 0.55, end: dur * 0.65 },
+          { mode: 'flip',   start: dur * 0.65, end: dur * 0.75 },
+          { mode: 'orbit',  start: dur * 0.75, end: dur * 0.88 },
           { mode: 'qte',    start: dur * 0.88, end: dur * 0.97 },
           { mode: 'target', start: dur * 0.97, end: dur + 5 }
         ];
         beats = beats.filter(function (t) {
-          return !(t >= dur * 0.48 && t < dur * 0.58);   // catch window owns its time
+          return !(t >= dur * 0.46 && t < dur * 0.55);   // catch window owns its time
         });
         song = { beats: beats, beatGrid: grid, phases: ph,
+                 spb: 60 / (CONFIG.bpm || 100),
                  kiai: [{ start: dur * 0.30, end: dur * 0.48 },
                         { start: dur * 0.70, end: dur * 0.88 }] };
       } else {
@@ -85,7 +88,7 @@
         const grid = [];
         for (let t = r.lead; t < r.duration - 2; t += spb) grid.push(t);
         song = { beats: r.beats, beatGrid: grid, kiai: r.kiai || [],
-                 phases: r.phases || [] };
+                 phases: r.phases || [], spb: r.spb };
       }
       loaded = true;
       return song;
@@ -130,6 +133,7 @@
       beatGrid: song.beatGrid,
       kiai: song.kiai,
       phases: song.phases,
+      spb: song.spb,
       approach: CONFIG.approachTime,
       offsetMs: CONFIG.audioOffsetMs,
       onFinish: onRoundEnd

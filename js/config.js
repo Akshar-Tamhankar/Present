@@ -40,16 +40,16 @@ window.CONFIG = {
      Timing windows in milliseconds (how close to the beat you must click).
      Bigger = easier. These are already forgiving.
      -------------------------------------------------------------------- */
-  windows: { perfect: 85, great: 145, good: 205 },
+  windows: { perfect: 100, great: 170, good: 240 },
 
-  // Fraction of a "perfect run" needed to fill the love meter. 0.55 = kind.
-  fillThreshold: 0.55,
+  // Fraction of a "perfect run" needed to fill the love meter. 0.45 = very kind.
+  fillThreshold: 0.45,
 
   // After this many failed attempts, the windows get 25% wider each time.
   mercyAfter: 1,
 
 
   /* ---- Feel ---------------------------------------------------------- */
-  approachTime: 1.55,   // seconds a note takes to travel inward
+  approachTime: 1.7,    // seconds a note takes to travel inward
   audioOffsetMs: 0      // set by the calibration screen; leave at 0
 };

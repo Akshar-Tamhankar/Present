@@ -21,14 +21,15 @@ window.Scene = (function () {
   let cv, ctx, W = 0, H = 0, DPR = 1;
   let raf = 0, last = 0, tGlobal = 0;
 
-  let backdropCv = null, treeCv = null, grainPat = null;
+  let backdropCv = null, treeCv = null, grainPat = null, cloudsCv = null;
 
   let notes = null;          // shared array of {t, judged} from Game
   let getSongTime = function () { return -999; };
   let approach = 1.55;
   let mode = 'ambient';      // 'ambient' | 'play'
-  let phases = [];           // [{mode:'target'|'tunnel'|'catch'|'qte', start, end}]
+  let phases = [];           // [{mode, start, end}]
   let playPhase = 'target';  // phase under the current song time
+  let spb = 0.469;           // seconds per beat (orbit sweep, portal timing)
 
   /* --- composition (matched to the reference frame) --------------------- */
   const HORIZON   = 0.520;   // waterline
@@ -113,6 +114,7 @@ window.Scene = (function () {
     buildBackdrop();
     buildTree();
     buildGrain();
+    buildCloudscape();
   }
 
   function offscreen() {
@@ -621,6 +623,14 @@ window.Scene = (function () {
   function setClock(fn) { getSongTime = fn; }
   function setMode(m) { mode = m; if (m !== 'play') { playPhase = 'target'; catchItems = []; } }
   function setPhases(arr) { phases = arr || []; }
+  function setSpb(v) { if (v > 0) spb = v; }
+
+  function phaseSpan(t) {
+    for (let i = 0; i < phases.length; i++) {
+      if (t >= phases[i].start && t < phases[i].end) return phases[i];
+    }
+    return null;
+  }
 
   function phaseAt(t) {
     for (let i = 0; i < phases.length; i++) {
@@ -897,21 +907,28 @@ window.Scene = (function () {
 
     // the world slides a few px against the cursor — cheap cinematic depth.
     // Overdraw by the max offset so parallax never exposes canvas edges.
-    if (backdropCv) {
+    if (playPhase === 'sky' && cloudsCv) {
+      // ABOVE THE CLOUDS — the vista falls away beneath us
+      ctx.drawImage(cloudsCv, -8 + par.x * -6, -6 + par.y * -4, W + 16, H + 12);
+      drawSkyExtras();
+    } else if (backdropCv) {
       ctx.drawImage(backdropCv, -8 + par.x * -6, -6 + par.y * -4, W + 16, H + 12);
     } else { ctx.fillStyle = '#160a2c'; ctx.fillRect(-8, -6, W + 16, H + 12); }
 
     drawCentreGlow();
     drawBokeh();
-    drawTree();
+    if (playPhase !== 'sky') drawTree();
     drawStreaks();
     drawPetals();
     drawPlayScrim();
-    if (mode === 'play' && playPhase === 'target') drawTarget();
+    if (mode === 'play' && (playPhase === 'target' || playPhase === 'sky')) drawTarget();
+    if (mode === 'play') drawPhaseDressing();
     drawShockRings();
     if (mode === 'play') drawNotes();
     drawCatch();
-    if (playPhase !== 'qte') drawHeart();
+    if (playPhase !== 'qte' && playPhase !== 'flight' &&
+        playPhase !== 'flip' && playPhase !== 'orbit' &&
+        playPhase !== 'sweet' && playPhase !== 'bloom') drawHeart();
     drawSparks();
     drawFloaters();
     drawRays();
@@ -1086,7 +1103,7 @@ window.Scene = (function () {
       catchItems.push({
         x: fromTop ? rr(0.05, 0.85) * W : -50,
         y: fromTop ? -50 : rr(0.08, 0.45) * H,
-        vx: rr(40, 120), vy: rr(50, 110),
+        vx: rr(34, 96), vy: rr(42, 88),
         r: rr(22, 34),
         rot: rr(-0.4, 0.4), rotV: rr(-1.4, 1.4),
         swayP: rr(0, 6.28),
@@ -1103,7 +1120,7 @@ window.Scene = (function () {
       const d = Math.hypot(c.x - x, c.y - y);
       if (d < bestD) { bestD = d; best = i; }
     }
-    if (best >= 0 && bestD < catchItems[best].r * 2.2) {
+    if (best >= 0 && bestD < catchItems[best].r * 2.6) {
       const c = catchItems[best];
       c.dead = true; c.pop = 0;
       return { x: c.x, y: c.y };
@@ -1264,7 +1281,13 @@ window.Scene = (function () {
       const p = Math.max(0, Math.min(1.25, prog));
       const nMode = phaseAt(n.t);
 
-      if (nMode === 'qte') { drawQteNote(n, i, p, dt); continue; }
+      if (nMode === 'qte')    { drawQteNote(n, i, p, dt); continue; }
+      if (nMode === 'sweet')  { drawSweetNote(n, i, p, dt); continue; }
+      if (nMode === 'bloom')  { drawBloomNote(n, i, p, dt); continue; }
+      if (nMode === 'volley') { drawVolleyNote(n, i, p, dt); continue; }
+      if (nMode === 'flight') { drawFlightNote(n, i, p, dt); continue; }
+      if (nMode === 'flip')   { drawFlipNote(n, i, p, dt); continue; }
+      if (nMode === 'orbit')  { drawOrbitNote(n, i, p, dt); continue; }
 
       let scale;
       if (nMode === 'tunnel') {
@@ -1313,6 +1336,685 @@ window.Scene = (function () {
       if (nMode === 'tunnel') ctx.restore();
     }
     ctx.restore();
+  }
+
+  function nhash(i) { return (i * 0.6180339887) % 1; }
+
+  /* ======================================================================
+     VOLLEY — Cupid's arrows loosed from the wings, striking the heart
+     ====================================================================== */
+
+  function drawVolleyNote(n, i, p, dt) {
+    const cx = W / 2, cy = centreY();
+    const side = (i % 2) ? 1 : -1;                    // 1 = from the right
+    const laneY = cy + (nhash(i) - 0.5) * H * 0.20;
+    const tipX = cx + side * (1 - p) * W * 0.60;
+    let a = 0.25 + 0.75 * p;
+    if (dt < 0) a *= Math.max(0, 1 + dt / 0.34);
+
+    ctx.save();
+    ctx.globalAlpha = a;
+    ctx.lineCap = 'round';
+
+    // ribbon trail
+    const L = Math.min(W, H) * 0.16;
+    ctx.strokeStyle = 'rgba(255,170,200,0.5)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (let k = 0; k <= 8; k++) {
+      const u = k / 8;
+      const x = tipX + side * (L * 0.9 + u * L * 0.9);
+      const y = laneY + Math.sin(u * 7 + tGlobal * 9 + i) * 5 * u;
+      if (k === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+
+    // shaft
+    ctx.strokeStyle = 'rgba(255,236,246,0.95)';
+    ctx.lineWidth = 3.2;
+    ctx.beginPath();
+    ctx.moveTo(tipX + side * 14, laneY);
+    ctx.lineTo(tipX + side * L, laneY);
+    ctx.stroke();
+
+    // gold fletching
+    ctx.fillStyle = '#ffd66b';
+    for (let f = 0; f < 2; f++) {
+      const fx = tipX + side * (L - 8 - f * 14);
+      ctx.beginPath();
+      ctx.moveTo(fx, laneY);
+      ctx.lineTo(fx + side * 12, laneY - 9);
+      ctx.lineTo(fx + side * 12, laneY + 9);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    // heart tip, rotated into the flight direction
+    ctx.shadowColor = 'rgba(255,90,160,0.95)';
+    ctx.shadowBlur = 14;
+    const gr = ctx.createLinearGradient(tipX, laneY - 12, tipX, laneY + 12);
+    gr.addColorStop(0, '#ff8fb6'); gr.addColorStop(1, '#e0175d');
+    ctx.fillStyle = gr;
+    heartPath(ctx, tipX, laneY, 13, side * 1.5708);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawVolleyDressing() {
+    // pulsing gold rings make the big heart read as the bullseye
+    const cx = W / 2, cy = centreY(), s = baseSize();
+    ctx.save();
+    for (let r = 0; r < 2; r++) {
+      const k = 1.6 + r * 0.45 + Math.sin(tGlobal * 3 + r) * 0.05;
+      ctx.globalAlpha = 0.28 - r * 0.1;
+      ctx.strokeStyle = '#ffd66b';
+      ctx.lineWidth = 2.5 - r;
+      ctx.setLineDash([10, 12]);
+      ctx.lineDashOffset = tGlobal * (r ? -30 : 30);
+      heartPath(ctx, cx, cy, s * k, 0);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  /* ======================================================================
+     FLIGHT — a paper love letter glides; click through every rose gate
+     ====================================================================== */
+
+  function flightY(tt) {
+    return centreY() + Math.sin(tt * 2.4) * H * 0.13 + Math.sin(tt * 0.9) * H * 0.04;
+  }
+  const FLIGHT_X = function () { return W * 0.30; };
+
+  function drawFlightNote(n, i, p, dt) {
+    const gx = FLIGHT_X() + (dt / approach) * W * 0.66;
+    const gy = flightY(n.t);
+    const gap = Math.min(W, H) * 0.085;
+    const near = Math.abs(dt) < 0.21;
+    let a = 0.25 + 0.75 * p;
+    if (dt < 0) a *= Math.max(0, 1 + dt / 0.34);
+
+    ctx.save();
+    ctx.globalAlpha = a;
+
+    // shimmer thread marking the gap
+    ctx.strokeStyle = near ? 'rgba(255,226,120,0.9)' : 'rgba(255,255,255,0.35)';
+    ctx.lineWidth = near ? 3 : 1.5;
+    ctx.setLineDash([4, 7]);
+    ctx.beginPath();
+    ctx.moveTo(gx, gy - gap);
+    ctx.lineTo(gx, gy + gap);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // rose knots at each end of the gate
+    for (let e = -1; e <= 1; e += 2) {
+      const ry = gy + e * gap;
+      ctx.shadowColor = near ? 'rgba(255,200,80,0.9)' : 'rgba(255,90,160,0.8)';
+      ctx.shadowBlur = near ? 18 : 10;
+      for (let k = 3; k >= 1; k--) {
+        ctx.fillStyle = k === 1 ? '#ffd1e2' : k === 2 ? '#f0679c' : '#c22a63';
+        ctx.beginPath();
+        ctx.arc(gx, ry, 5.5 * k * 0.55 + 3, 0, 6.283);
+        ctx.fill();
+      }
+      ctx.shadowBlur = 0;
+      // petals
+      ctx.fillStyle = 'rgba(255,160,200,0.85)';
+      for (let q = 0; q < 5; q++) {
+        const ang = q * 1.2566 + tGlobal * 0.7 + e;
+        ctx.beginPath();
+        ctx.ellipse(gx + Math.cos(ang) * 9, ry + Math.sin(ang) * 9, 4.5, 2.6, ang, 0, 6.283);
+        ctx.fill();
+      }
+    }
+    ctx.restore();
+  }
+
+  function drawFlightDressing() {
+    const t = getSongTime();
+    const px = FLIGHT_X(), py = flightY(t);
+    const bank = (flightY(t + 0.05) - py) * 0.9;      // lean into the curve
+
+    ctx.save();
+    // ribbon contrail
+    ctx.strokeStyle = 'rgba(255,190,220,0.5)';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    for (let k = 0; k <= 14; k++) {
+      const x = px - k * 16;
+      const y = flightY(t - k * 0.045) + Math.sin(tGlobal * 8 + k) * k * 0.35;
+      if (k === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+
+    // the envelope-plane
+    ctx.translate(px, py);
+    ctx.rotate(Math.atan2(bank, 22));
+    ctx.shadowColor = 'rgba(255,120,180,0.85)';
+    ctx.shadowBlur = 16;
+    const g1 = ctx.createLinearGradient(-18, 0, 26, 0);
+    g1.addColorStop(0, '#ffe9f2'); g1.addColorStop(1, '#ffc3da');
+    ctx.fillStyle = g1;
+    ctx.beginPath();                                  // fuselage dart
+    ctx.moveTo(26, 0); ctx.lineTo(-18, -10); ctx.lineTo(-8, 0); ctx.lineTo(-18, 10);
+    ctx.closePath(); ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = 'rgba(255,255,255,0.9)';          // upper wing fold
+    ctx.beginPath();
+    ctx.moveTo(26, 0); ctx.lineTo(-14, -22); ctx.lineTo(-12, -2);
+    ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#f7a8c4';                        // heart seal
+    heartPath(ctx, 0, 1, 5, 0);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  /* ======================================================================
+     FLIP — shooting-star hearts fall to a line… then the portal flips
+     gravity and they rise instead. A little GD 2.2 tribute.
+     ====================================================================== */
+
+  function flipMid(t) {
+    const ph = phaseSpan(t);
+    return ph ? (ph.start + ph.end) / 2 : t;
+  }
+
+  function drawFlipNote(n, i, p, dt) {
+    const flipped = n.t >= flipMid(n.t);
+    const x = W * (0.12 + 0.76 * nhash(i));
+    const yLine = flipped ? H * 0.26 : H * 0.74;
+    const y0 = flipped ? H * 1.08 : -H * 0.08;
+    const y = y0 + (yLine - y0) * p;
+    let a = 0.3 + 0.7 * p;
+    if (dt < 0) a *= Math.max(0, 1 + dt / 0.34);
+
+    ctx.save();
+    ctx.globalAlpha = a;
+    // comet tail opposite the direction of travel
+    const tail = (flipped ? 1 : -1) * (46 + p * 40);
+    const tg = ctx.createLinearGradient(x, y, x, y + tail);
+    tg.addColorStop(0, 'rgba(255,214,120,0.9)');
+    tg.addColorStop(1, 'rgba(255,120,180,0)');
+    ctx.strokeStyle = tg;
+    ctx.lineWidth = 4;
+    ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x, y + tail); ctx.stroke();
+
+    ctx.shadowColor = 'rgba(255,200,90,0.95)';
+    ctx.shadowBlur = 16;
+    const gr = ctx.createLinearGradient(x, y - 12, x, y + 12);
+    gr.addColorStop(0, '#fff0b8'); gr.addColorStop(1, '#ff8fb6');
+    ctx.fillStyle = gr;
+    heartPath(ctx, x, y, 12.5, flipped ? 3.1416 : 0);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawFlipDressing() {
+    const t = getSongTime();
+    const mid = flipMid(t);
+    const flipped = t >= mid;
+    const yLine = flipped ? H * 0.26 : H * 0.74;
+
+    ctx.save();
+    // the catch line
+    ctx.globalAlpha = 0.8;
+    ctx.strokeStyle = 'rgba(255,226,140,0.75)';
+    ctx.lineWidth = 2.5;
+    ctx.setLineDash([16, 12]);
+    ctx.lineDashOffset = -tGlobal * 40;
+    ctx.shadowColor = 'rgba(255,200,80,0.8)';
+    ctx.shadowBlur = 12;
+    ctx.beginPath();
+    ctx.moveTo(W * 0.06, yLine); ctx.lineTo(W * 0.94, yLine);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.shadowBlur = 0;
+
+    // the portal sweeps through at the midpoint
+    const u = (t - mid) / 0.9;
+    if (Math.abs(u) < 1) {
+      const bx = W * (0.5 + u * 0.55), by = H * 0.5;
+      const R = Math.min(W, H) * 0.16;
+      for (let ring = 0; ring < 2; ring++) {
+        const rot = tGlobal * (ring ? -7 : 7);
+        ctx.globalAlpha = (1 - Math.abs(u)) * (ring ? 0.9 : 0.6);
+        ctx.strokeStyle = ring ? '#ffd66b' : '#ff5c94';
+        ctx.lineWidth = 5 - ring * 2;
+        ctx.shadowColor = ring ? 'rgba(255,200,80,0.9)' : 'rgba(255,80,150,0.9)';
+        ctx.shadowBlur = 22;
+        ctx.beginPath();
+        for (let k = 0; k <= 30; k++) {
+          const ang = rot + (k / 30) * 5.2;
+          const rr2 = R * (0.35 + 0.65 * (k / 30)) * (1 - ring * 0.25);
+          const xx = bx + Math.cos(ang) * rr2, yy = by + Math.sin(ang) * rr2;
+          if (k === 0) ctx.moveTo(xx, yy); else ctx.lineTo(xx, yy);
+        }
+        ctx.stroke();
+      }
+      ctx.shadowBlur = 0;
+      if (Math.abs(u) < 0.12) kiaiFlash = Math.max(kiaiFlash, 0.7);
+    }
+    ctx.restore();
+  }
+
+  /* ======================================================================
+     ORBIT — the two of us sweep the ring; click as we pass each spark
+     ====================================================================== */
+
+  function orbitR() { return Math.min(W, H) * 0.27; }
+  function orbitOmega() { return 6.2832 / (4 * spb); }   // one lap per 4 beats
+  function orbitAngle(t) { return -1.5708 + orbitOmega() * t; }
+
+  function drawOrbitNote(n, i, p, dt) {
+    const cx = W / 2, cy = centreY(), R = orbitR();
+    const ang = orbitAngle(n.t);
+    const x = cx + Math.cos(ang) * R;
+    const y = cy + Math.sin(ang) * R * 0.92;
+    const near = Math.abs(dt) < 0.21;
+    let a = Math.min(1, p * 1.6);
+    if (dt < 0) a *= Math.max(0, 1 + dt / 0.34);
+    const sc = 0.5 + 0.5 * p;
+
+    ctx.save();
+    ctx.globalAlpha = a;
+    ctx.shadowColor = near ? 'rgba(255,214,90,1)' : 'rgba(255,90,160,0.9)';
+    ctx.shadowBlur = near ? 26 : 12;
+    const gr = ctx.createLinearGradient(x, y - 14, x, y + 14);
+    gr.addColorStop(0, near ? '#ffe9a0' : '#ff9ec4');
+    gr.addColorStop(1, near ? '#ffb13d' : '#d61e66');
+    ctx.fillStyle = gr;
+    heartPath(ctx, x, y, 17 * sc, ang + 1.5708);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    // tick pointing outward
+    ctx.strokeStyle = 'rgba(255,240,248,0.7)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(cx + Math.cos(ang) * (R + 18), cy + Math.sin(ang) * (R * 0.92) + Math.sin(ang) * 18 * 0.92);
+    ctx.lineTo(cx + Math.cos(ang) * (R + 30), cy + Math.sin(ang) * (R * 0.92) + Math.sin(ang) * 30 * 0.92);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawOrbitDressing() {
+    const t = getSongTime();
+    const cx = W / 2, cy = centreY(), R = orbitR();
+    const ang = orbitAngle(t);
+
+    ctx.save();
+    // the ring
+    ctx.globalAlpha = 0.5;
+    ctx.strokeStyle = 'rgba(255,190,220,0.6)';
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.ellipse(cx, cy, R, R * 0.92, 0, 0, 6.283); ctx.stroke();
+    ctx.globalAlpha = 0.22;
+    ctx.beginPath(); ctx.ellipse(cx, cy, R + 10, (R + 10) * 0.92, 0, 0, 6.283); ctx.stroke();
+
+    // the sweep beam, radar-style: centre out to the pair
+    const bx = cx + Math.cos(ang) * R, by = cy + Math.sin(ang) * R * 0.92;
+    const beam = ctx.createLinearGradient(cx, cy, bx, by);
+    beam.addColorStop(0, 'rgba(255,190,220,0)');
+    beam.addColorStop(1, kiai ? 'rgba(255,214,107,0.9)' : 'rgba(255,140,190,0.85)');
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = beam;
+    ctx.lineWidth = 3.5;
+    ctx.shadowColor = kiai ? 'rgba(255,200,80,0.8)' : 'rgba(255,90,160,0.7)';
+    ctx.shadowBlur = 12;
+    ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(bx, by); ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    // fading comet wedge behind the pair
+    for (let k = 1; k <= 14; k++) {
+      const a2 = ang - k * 0.055;
+      ctx.globalAlpha = 0.85 * (1 - k / 14);
+      ctx.strokeStyle = kiai ? '#ffd66b' : '#ff8fb6';
+      ctx.lineWidth = 4.5;
+      ctx.beginPath();
+      ctx.moveTo(cx + Math.cos(a2) * (R - 18), cy + Math.sin(a2) * (R - 18) * 0.92);
+      ctx.lineTo(cx + Math.cos(a2) * (R + 18), cy + Math.sin(a2) * (R + 18) * 0.92);
+      ctx.stroke();
+    }
+
+    // the two of us, riding the sweep together
+    const hx = cx + Math.cos(ang) * R, hy = cy + Math.sin(ang) * R * 0.92;
+    ctx.globalAlpha = 1;
+    ctx.shadowColor = 'rgba(255,120,180,0.95)';
+    ctx.shadowBlur = 18;
+    ctx.fillStyle = '#ff6ea3';
+    heartPath(ctx, hx - 8, hy - 4, 10, -0.3);
+    ctx.fill();
+    ctx.fillStyle = '#ffd66b';
+    heartPath(ctx, hx + 8, hy + 5, 8.5, 0.3);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // soft core where the big heart usually lives
+    const cg = ctx.createRadialGradient(cx, cy, 0, cx, cy, 40);
+    cg.addColorStop(0, 'rgba(255,170,200,0.55)');
+    cg.addColorStop(1, 'rgba(255,170,200,0)');
+    ctx.fillStyle = cg;
+    ctx.beginPath(); ctx.arc(cx, cy, 40, 0, 6.283); ctx.fill();
+    ctx.restore();
+  }
+
+  function drawPhaseDressing() {
+    if (playPhase === 'volley') drawVolleyDressing();
+    else if (playPhase === 'flight') drawFlightDressing();
+    else if (playPhase === 'flip') drawFlipDressing();
+    else if (playPhase === 'orbit') drawOrbitDressing();
+    else if (playPhase === 'sweet') drawSweetDressing();
+    else if (playPhase === 'bloom') drawBloomDressing();
+  }
+
+  /* ======================================================================
+     SWEET — a valentine chocolate box; truffles pop up, click at the top
+     ====================================================================== */
+
+  const SWEET_CELLS = 6;
+  function sweetCell(i) {
+    const k = (i * 2 + 1) % SWEET_CELLS;
+    const u = (k + 0.5) / SWEET_CELLS;
+    return {
+      x: W * (0.22 + 0.56 * u),
+      y: H * 0.76 + Math.sin(u * Math.PI) * -H * 0.035    // gentle arc
+    };
+  }
+
+  function drawSweetDressing() {
+    // the tray: rounded slab with gold trim under the cells
+    const x0 = W * 0.17, x1 = W * 0.83;
+    const y0 = H * 0.70, y1 = H * 0.86;
+    ctx.save();
+    ctx.globalAlpha = 0.94;
+    ctx.fillStyle = '#4a1626';
+    roundRectPath(ctx, x0, y0, x1 - x0, y1 - y0, 26);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,205,120,0.8)';
+    ctx.lineWidth = 2.5;
+    roundRectPath(ctx, x0 + 6, y0 + 6, x1 - x0 - 12, y1 - y0 - 12, 20);
+    ctx.stroke();
+    // cells
+    for (let k = 0; k < SWEET_CELLS; k++) {
+      const c = sweetCell(k);        // k maps through the same arc
+      ctx.fillStyle = 'rgba(30,6,14,0.85)';
+      ctx.beginPath();
+      ctx.ellipse(c.x, c.y + 10, 38, 16, 0, 0, 6.283);
+      ctx.fill();
+    }
+    // ribbon bow on the corner
+    ctx.shadowColor = 'rgba(255,90,150,0.7)';
+    ctx.shadowBlur = 8;
+    ctx.fillStyle = '#ff5c94';
+    heartPath(ctx, x0 + 16, y0 + 2, 13, -0.6);
+    ctx.fill();
+    heartPath(ctx, x0 + 40, y0 + 2, 13, 0.6);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#ffd66b';
+    ctx.beginPath(); ctx.arc(x0 + 28, y0 + 6, 6, 0, 6.283); ctx.fill();
+    ctx.restore();
+  }
+
+  function drawSweetNote(n, i, p, dt) {
+    const c = sweetCell(i);
+    const rise = 60 * Math.min(1, p);
+    const y = c.y - rise;
+    const near = Math.abs(dt) < 0.24;
+    const sc = 0.55 + 0.45 * Math.min(1, p);
+    let a = 0.3 + 0.7 * Math.min(1, p * 1.4);
+    if (dt < 0) a *= Math.max(0, 1 + dt / 0.34);
+
+    ctx.save();
+    ctx.globalAlpha = a;
+    ctx.translate(c.x, y);
+    ctx.scale(sc, sc);
+
+    // gold glint ring when it's time
+    if (near) {
+      ctx.strokeStyle = 'rgba(255,214,110,0.95)';
+      ctx.lineWidth = 4;
+      ctx.shadowColor = 'rgba(255,200,80,0.9)';
+      ctx.shadowBlur = 18;
+      ctx.beginPath(); ctx.arc(0, -6, 46, 0, 6.283); ctx.stroke();
+      ctx.shadowBlur = 0;
+    }
+
+    // paper frill
+    ctx.fillStyle = '#7a2b3f';
+    for (let q = 0; q < 12; q++) {
+      const ang = (q / 12) * 6.283;
+      ctx.beginPath();
+      ctx.ellipse(Math.cos(ang) * 29, 12 + Math.sin(ang) * 9, 9, 5.5, ang, 0, 6.283);
+      ctx.fill();
+    }
+    // the truffle
+    const g1 = ctx.createRadialGradient(-9, -18, 2, 0, -6, 34);
+    g1.addColorStop(0, '#b06a45');
+    g1.addColorStop(0.5, '#63301b');
+    g1.addColorStop(1, '#3a1810');
+    ctx.fillStyle = g1;
+    ctx.beginPath(); ctx.arc(0, -6, 29, 0, 6.283); ctx.fill();
+    // drizzle
+    ctx.strokeStyle = 'rgba(255,220,190,0.9)';
+    ctx.lineWidth = 2.6;
+    ctx.beginPath();
+    for (let q = 0; q <= 8; q++) {
+      const xx = -21 + q * 5.2;
+      const yy = -8 + Math.sin(q * 2.4 + i) * 8 - q;
+      if (q === 0) ctx.moveTo(xx, yy); else ctx.lineTo(xx, yy);
+    }
+    ctx.stroke();
+    // tiny heart on top
+    ctx.fillStyle = '#ff6ea3';
+    heartPath(ctx, 0, -29, 8, 0);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  /* ======================================================================
+     BLOOM — a rose vine; buds unfurl, click each rose at full bloom
+     ====================================================================== */
+
+  function vineY(x) {
+    const u = x / W;
+    return H * 0.60 + Math.sin(u * 6.8) * H * 0.05 + Math.sin(u * 2.3) * H * 0.03;
+  }
+
+  function drawBloomDressing() {
+    ctx.save();
+    ctx.strokeStyle = 'rgba(90,140,70,0.85)';
+    ctx.lineWidth = 4;
+    ctx.shadowColor = 'rgba(40,80,30,0.6)';
+    ctx.shadowBlur = 6;
+    ctx.beginPath();
+    for (let x = -10; x <= W + 10; x += 14) {
+      const y = vineY(x);
+      if (x === -10) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+    // leaves
+    ctx.fillStyle = 'rgba(95,150,75,0.8)';
+    for (let k = 0; k < 12; k++) {
+      const x = (k + 0.5) * W / 12;
+      const y = vineY(x);
+      const flip = k % 2 ? 1 : -1;
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(flip * 0.7 + Math.sin(tGlobal + k) * 0.06);
+      ctx.beginPath();
+      ctx.ellipse(0, flip * -12, 6, 14, 0, 0, 6.283);
+      ctx.fill();
+      ctx.restore();
+    }
+    ctx.restore();
+  }
+
+  function drawBloomNote(n, i, p, dt) {
+    const x = W * (0.12 + 0.76 * nhash(i));
+    const y = vineY(x);
+    const near = Math.abs(dt) < 0.24;
+    const open = Math.min(1, p);                 // petals unfurl with approach
+    let a = 0.35 + 0.65 * Math.min(1, p * 1.3);
+    if (dt < 0) a *= Math.max(0, 1 + dt / 0.34);
+
+    ctx.save();
+    ctx.globalAlpha = a;
+    ctx.translate(x, y);
+
+    if (near) {
+      ctx.strokeStyle = 'rgba(255,214,110,0.95)';
+      ctx.lineWidth = 3.5;
+      ctx.shadowColor = 'rgba(255,200,80,0.9)';
+      ctx.shadowBlur = 16;
+      ctx.beginPath(); ctx.arc(0, 0, 34 + open * 7, 0, 6.283); ctx.stroke();
+      ctx.shadowBlur = 0;
+    }
+
+    // sepals
+    ctx.fillStyle = '#5d9647';
+    for (let q = 0; q < 3; q++) {
+      const ang = 1.5708 + (q - 1) * 0.7;
+      ctx.beginPath();
+      ctx.ellipse(Math.cos(ang) * 8, Math.sin(ang) * 8 + 6, 4, 9, ang, 0, 6.283);
+      ctx.fill();
+    }
+    // outer petals unfurl as it approaches
+    const petalsN = 8;
+    for (let q = 0; q < petalsN; q++) {
+      const ang = (q / petalsN) * 6.283 + open * 0.5 + i;
+      const rad = 6 + open * 15;
+      const g1 = ctx.createRadialGradient(0, 0, 1, Math.cos(ang) * rad, Math.sin(ang) * rad, 14);
+      g1.addColorStop(0, '#ff5c8f');
+      g1.addColorStop(1, near ? '#ffb3c8' : '#c21f57');
+      ctx.fillStyle = g1;
+      ctx.beginPath();
+      ctx.ellipse(Math.cos(ang) * rad, Math.sin(ang) * rad,
+                  7.5 + open * 7.5, 5 + open * 5.5, ang, 0, 6.283);
+      ctx.fill();
+    }
+    // core
+    const cg = ctx.createRadialGradient(-2, -2, 0, 0, 0, 9);
+    cg.addColorStop(0, '#ff9dbd');
+    cg.addColorStop(1, '#a01243');
+    ctx.fillStyle = cg;
+    ctx.beginPath(); ctx.arc(0, 0, 6 + open * 3, 0, 6.283); ctx.fill();
+    ctx.restore();
+  }
+
+  /* ======================================================================
+     SKY — baked cloudscape for the above-the-clouds section
+     ====================================================================== */
+
+  function buildCloudscape() {
+    const o = offscreen(), g = o.g;
+    seed = 777001;
+
+    const sky = g.createLinearGradient(0, 0, 0, H);
+    sky.addColorStop(0.00, '#7a4bb8');
+    sky.addColorStop(0.26, '#c66fae');
+    sky.addColorStop(0.50, '#f79bab');
+    sky.addColorStop(0.72, '#ffc9a6');
+    sky.addColorStop(1.00, '#ffe9cf');
+    g.fillStyle = sky;
+    g.fillRect(0, 0, W, H);
+
+    // the sun, huge and low
+    const sx = W * 0.62, sy = H * 0.46;
+    const halo = g.createRadialGradient(sx, sy, 0, sx, sy, Math.max(W, H) * 0.5);
+    halo.addColorStop(0, 'rgba(255,247,225,0.95)');
+    halo.addColorStop(0.12, 'rgba(255,225,185,0.6)');
+    halo.addColorStop(0.4, 'rgba(255,190,170,0.22)');
+    halo.addColorStop(1, 'rgba(255,190,170,0)');
+    g.fillStyle = halo;
+    g.fillRect(0, 0, W, H);
+
+    // sparkle stars in the violet
+    for (let i = 0; i < 40; i++) {
+      const x = rnd() * W, y = rr(0, H * 0.2);
+      g.globalAlpha = rr(0.2, 0.7) * (1 - y / (H * 0.2));
+      g.fillStyle = '#fff0ff';
+      g.beginPath(); g.arc(x, y, rr(0.5, 1.4), 0, 6.283); g.fill();
+    }
+    g.globalAlpha = 1;
+
+    // three cloud decks, brightest nearest — we're standing on the light
+    const decks = [
+      { y: 0.60, h: 0.05, a: 0.45, tone: '234,190,235' },
+      { y: 0.72, h: 0.07, a: 0.7,  tone: '255,214,228' },
+      { y: 0.86, h: 0.10, a: 0.95, tone: '255,240,244' }
+    ];
+    for (let d = 0; d < decks.length; d++) {
+      const deck = decks[d];
+      const m = offscreen();
+      for (let i = 0; i < 26; i++) {
+        const x = rnd() * W;
+        const y = H * deck.y + rr(-H * deck.h, H * deck.h) * 0.5;
+        m.g.fillStyle = 'rgba(' + deck.tone + ',' + rr(deck.a * 0.5, deck.a).toFixed(3) + ')';
+        m.g.beginPath();
+        m.g.ellipse(x, y, rr(W * 0.07, W * 0.2), rr(H * 0.02, H * 0.05), 0, 0, 6.283);
+        m.g.fill();
+      }
+      g.save();
+      g.filter = 'blur(' + (14 - d * 4) + 'px)';
+      g.drawImage(m.c, 0, 0, W, H);
+      g.restore();
+      // fill below the last deck so no vista peeks through
+      if (d === decks.length - 1) {
+        const fill = g.createLinearGradient(0, H * 0.86, 0, H);
+        fill.addColorStop(0, 'rgba(255,240,244,0)');
+        fill.addColorStop(0.6, 'rgba(255,238,242,0.9)');
+        fill.addColorStop(1, '#ffeef2');
+        g.fillStyle = fill;
+        g.fillRect(0, H * 0.8, W, H * 0.2);
+      }
+    }
+
+    // little cloud islands adrift in the middle air
+    for (let i = 0; i < 5; i++) {
+      const x = rnd() * W, y = H * rr(0.28, 0.5);
+      const w2 = rr(W * 0.04, W * 0.1);
+      g.globalAlpha = rr(0.5, 0.85);
+      g.fillStyle = 'rgba(255,236,244,0.9)';
+      g.beginPath();
+      g.ellipse(x, y, w2, w2 * 0.3, 0, 0, 6.283);
+      g.ellipse(x - w2 * 0.5, y + w2 * 0.08, w2 * 0.5, w2 * 0.22, 0, 0, 6.283);
+      g.ellipse(x + w2 * 0.5, y + w2 * 0.06, w2 * 0.45, w2 * 0.2, 0, 0, 6.283);
+      g.fill();
+    }
+    g.globalAlpha = 1;
+
+    cloudsCv = o.c;
+  }
+
+  /** Live extras over the baked cloudscape: drifting puffs + sun rays. */
+  function drawSkyExtras() {
+    ctx.save();
+    for (let i = 0; i < 3; i++) {
+      const u = ((tGlobal * 0.014 + i * 0.37) % 1.2) - 0.1;
+      const x = u * W;
+      const y = H * (0.34 + i * 0.1);
+      const w2 = W * (0.05 + i * 0.02);
+      ctx.globalAlpha = 0.55;
+      ctx.fillStyle = 'rgba(255,238,246,0.85)';
+      ctx.beginPath();
+      ctx.ellipse(x, y, w2, w2 * 0.3, 0, 0, 6.283);
+      ctx.ellipse(x - w2 * 0.5, y + w2 * 0.07, w2 * 0.5, w2 * 0.2, 0, 0, 6.283);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  function roundRectPath(g, x, y, w, h, r) {
+    g.beginPath();
+    g.moveTo(x + r, y);
+    g.arcTo(x + w, y, x + w, y + h, r);
+    g.arcTo(x + w, y + h, x, y + h, r);
+    g.arcTo(x, y + h, x, y, r);
+    g.arcTo(x, y, x + w, y, r);
+    g.closePath();
   }
 
   /** QTE note: a scattered heart with a ring closing on it. Same clock. */
@@ -1585,7 +2287,7 @@ window.Scene = (function () {
     setNotes: setNotes, setClock: setClock, setMode: setMode,
     punch: punch, pulse: pulse, burst: burst, celebrate: celebrate,
     setKiai: setKiai, judgment: judgment, milestone: milestone,
-    setPhases: setPhases, banner: banner,
+    setPhases: setPhases, setSpb: setSpb, banner: banner,
     spawnCatch: spawnCatch, catchHit: catchHit,
     get _catch() { return catchItems; },   // test hook
     get heartCentre() { return { x: W / 2, y: centreY(), s: baseSize() }; }
