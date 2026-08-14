@@ -1,16 +1,20 @@
 # ♡ six months
 
-A love-themed game in three acts, ending in a gift:
+A love-themed rhythm gauntlet where **the song is the level**. One track,
+128 BPM, real build-ups and drops — and every section transforms the game:
 
-- **Act I — the song.** Hearts float in toward the big heart in the middle;
-  click (or Space) exactly on the beat and the love meter fills.
-- **Act II — petal catch.** Hearts tumble through the breeze; click them
-  before they drift away.
-- **Act III — the finale.** Quick-time moments: a ring closes on a heart —
-  hit it the instant it seals.
+- **Verse** — hearts shrink onto the big heart; click on the beat.
+- **Build** — snare rolls, risers, the world holds its breath.
+- **DROP** — the vista rips away into a **neon heart tunnel** (kiai: gold
+  rings, screen shake, fever meter) with notes racing out of the void.
+- **Breakdown** — a **catch interlude**: hearts drift by, click them all.
+- **Second drop** — back down the tunnel, faster.
+- **Finale** — half-time chords and QTE moments: a ring seals on a scattered
+  heart; strike exactly then.
 
-Then the gift box: drag the bow to untie it, lift the lid, and the reveal is
-**HAPPY 6 MONTH ANNIVERSARY!!!!** plus a golden **redeem-a-kiss** ticket.
+Phase banners call every switch. Then the gift box: drag the bow, lift the
+lid — **HAPPY 6 MONTH ANNIVERSARY!!!!** and a golden **redeem-a-kiss**
+ticket.
 
 The scene is a Ghost-of-Tsushima-style vista, love-themed: cherry blossom
 canopy hanging into frame, sunrise fog over a mirror pond, god rays, wind
@@ -50,6 +54,10 @@ with zero setup). To use a real song — *your* song:
 No beatmap? It falls back to an even grid from `bpm` in config — playable,
 but tapping the map takes two minutes and feels way better.
 
+Custom tracks get the full ride too: the game synthesises tunnel sections
+through the middle of the song, a catch break between them, and a QTE finale
+near the end.
+
 ## Difficulty
 
 Also in `js/config.js`:
@@ -82,10 +90,10 @@ index.html          screens + markup
 style.css           all styling, gift box 3D, golden ticket
 js/config.js        ← the only file you need to edit
 js/audio.js         Web Audio engine + sample-accurate song clock
-js/song.js          built-in synthesized song (direct-DSP render)
+js/song.js          built-in 128BPM track (direct-DSP) + phase/beat maps
 js/beatmap.js       beat times for your own song
 js/scene.js         the whole painted scene + game rendering
-js/game.js          timing, judging, scoring, kiai tracking
+js/game.js          timing, judging, scoring, phase engine, kiai
 js/gift.js          bow-drag + lid-lift unwrapping
 js/fx.js            DOM choreography (anime.js): title, reveal, tilt
 js/vendor/anime.min.js  anime.js v3.2.2 (MIT), vendored so it works offline

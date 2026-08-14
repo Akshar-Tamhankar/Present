@@ -60,9 +60,23 @@
         // Beat grid for the background throb: every other note is close enough.
         const grid = [];
         for (let i = 0; i < beats.length; i += 2) grid.push(beats[i]);
-        // fever the middle third of a custom track — better than nothing
-        song = { beats: beats, beatGrid: grid,
-                 kiai: [{ start: dur * 0.38, end: dur * 0.62 }] };
+        // synthesise a reasonable ride for a custom track: tunnel through
+        // the middle drops, a catch break between them, QTE at the end
+        const ph = [
+          { mode: 'target', start: 0,          end: dur * 0.30 },
+          { mode: 'tunnel', start: dur * 0.30, end: dur * 0.48 },
+          { mode: 'catch',  start: dur * 0.48, end: dur * 0.58 },
+          { mode: 'target', start: dur * 0.58, end: dur * 0.70 },
+          { mode: 'tunnel', start: dur * 0.70, end: dur * 0.88 },
+          { mode: 'qte',    start: dur * 0.88, end: dur * 0.97 },
+          { mode: 'target', start: dur * 0.97, end: dur + 5 }
+        ];
+        beats = beats.filter(function (t) {
+          return !(t >= dur * 0.48 && t < dur * 0.58);   // catch window owns its time
+        });
+        song = { beats: beats, beatGrid: grid, phases: ph,
+                 kiai: [{ start: dur * 0.30, end: dur * 0.48 },
+                        { start: dur * 0.70, end: dur * 0.88 }] };
       } else {
         // --- built-in generated track ---
         const r = await Song.render(CONFIG.bpm || 100);
@@ -70,7 +84,8 @@
         const spb = 60 / r.bpm;
         const grid = [];
         for (let t = r.lead; t < r.duration - 2; t += spb) grid.push(t);
-        song = { beats: r.beats, beatGrid: grid, kiai: r.kiai || [] };
+        song = { beats: r.beats, beatGrid: grid, kiai: r.kiai || [],
+                 phases: r.phases || [] };
       }
       loaded = true;
       return song;
@@ -114,6 +129,7 @@
     Game.load(song.beats, {
       beatGrid: song.beatGrid,
       kiai: song.kiai,
+      phases: song.phases,
       approach: CONFIG.approachTime,
       offsetMs: CONFIG.audioOffsetMs,
       onFinish: onRoundEnd
@@ -130,16 +146,10 @@
     AudioEngine.fadeOut(0.8);
 
     if (res.passed) {
-      // act I cleared — acts II and III, then the box
+      // the song was the whole gauntlet — straight to the box
       setTimeout(function () {
-        show('stage');
-        Stages.start('catch', 0, function () {
-          Stages.start('qte', 0, function () {
-            AudioEngine.fadeOut(1.2);
-            show('gift');
-            Gift.reset(function () { show('reveal'); revealSequence(); });
-          });
-        });
+        show('gift');
+        Gift.reset(function () { show('reveal'); revealSequence(); });
       }, 900);
       return;
     }
@@ -166,7 +176,6 @@
 
   function restart() {
     Game.stop();
-    if (window.Stages) Stages.abort();
     AudioEngine.stop();
     AudioEngine.setVolume(0.9);
     Scene.setMode('ambient');

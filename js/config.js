@@ -33,7 +33,7 @@ window.CONFIG = {
   songUrl: null,
 
   // Only used by the built-in generated song.
-  bpm: 100,
+  bpm: 128,
 
 
   /* ---- Difficulty ---------------------------------------------------

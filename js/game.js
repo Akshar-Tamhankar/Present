@@ -26,6 +26,11 @@ window.Game = (function () {
   let countInFrom = 0;
   let kiaiWindows = [];
   let inKiai = false;
+  let phases = [];
+  let curMode = 'target';
+  let catchPlan = [];        // spawn times for catch hearts
+  let catchIdx = 0;
+  let catchTotal = 0;
 
   let onFinish = function () {};
 
@@ -68,6 +73,21 @@ window.Game = (function () {
     inKiai = false;
     Scene.setKiai(false);
 
+    phases = opts.phases || [];
+    Scene.setPhases(phases);
+    curMode = 'target';
+    catchPlan = [];
+    catchIdx = 0;
+    phases.forEach(function (ph) {
+      if (ph.mode !== 'catch') return;
+      const usable = (ph.end - ph.start) - 1.6;
+      const count = 8;
+      for (let k = 0; k < count; k++) {
+        catchPlan.push(ph.start + 0.35 + usable * (k / (count - 1)));
+      }
+    });
+    catchTotal = catchPlan.length;
+
     // Mercy: after a failed attempt, widen the windows.
     const base = opts.windows || CONFIG.windows;
     const mercy = Math.max(0, attempts - (CONFIG.mercyAfter || 1) + 1);
@@ -77,8 +97,8 @@ window.Game = (function () {
     endsAt = (notes.length ? notes[notes.length - 1].t : 0) + 1.6;
     countInFrom = notes.length ? notes[0].t : 0;
 
-    stats = { perfect: 0, great: 0, good: 0, miss: 0, stray: 0,
-              combo: 0, best: 0, units: 0, total: notes.length };
+    stats = { perfect: 0, great: 0, good: 0, miss: 0, stray: 0, caught: 0,
+              combo: 0, best: 0, units: 0, total: notes.length + catchTotal };
 
     Scene.setNotes(notes, approach);
     renderHud(true);
@@ -111,6 +131,25 @@ window.Game = (function () {
     const t = (evt ? AudioEngine.positionAtEvent(evt) : AudioEngine.position()) - offsetMs / 1000;
     const hitX = evt && typeof evt.clientX === 'number' && evt.clientX > 0 ? evt.clientX : null;
     const hitY = evt && typeof evt.clientY === 'number' && evt.clientY > 0 ? evt.clientY : null;
+
+    // catch interlude: clicks pop drifting hearts instead of judging time
+    if (curMode === 'catch') {
+      const hit = Scene.catchHit(hitX == null ? -999 : hitX, hitY == null ? -999 : hitY);
+      if (hit) {
+        stats.caught++;
+        stats.units += 1;
+        stats.combo++;
+        if (stats.combo > stats.best) stats.best = stats.combo;
+        Scene.judgment('perfect', 'GOT IT', hit.x, hit.y);
+        Scene.punch('great');
+        AudioEngine.sfx.great();
+        if (stats.combo > 0 && stats.combo % 10 === 0) Scene.milestone(stats.combo);
+        renderHud();
+      } else {
+        AudioEngine.sfx.good();     // whiffs are free during the frenzy
+      }
+      return;
+    }
 
     // nearest unjudged note
     let best = -1, bestD = Infinity;
@@ -173,6 +212,28 @@ window.Game = (function () {
         Scene.judgment('miss', praise('miss'), null, null);
         renderHud();
       } else if (n.t > t + 0.5) break;
+    }
+
+    // phase engine: swap gameplay mode with the song's sections
+    let m = 'target';
+    for (let i = 0; i < phases.length; i++) {
+      if (t >= phases[i].start && t < phases[i].end) { m = phases[i].mode; break; }
+    }
+    if (m !== curMode) {
+      curMode = m;
+      const B = {
+        tunnel: ['THE TUNNEL', 'same beat — new world'],
+        catch:  ['CATCH US ♡', 'click every heart!'],
+        qte:    ['THE FINALE', 'strike when the ring seals'],
+        target: ['BACK TO US', '']
+      }[m];
+      if (B && B[0] !== 'BACK TO US' || (B && t > 8)) Scene.banner(B[0], B[1]);
+    }
+
+    // scheduled catch hearts
+    while (catchIdx < catchPlan.length && catchPlan[catchIdx] <= t) {
+      Scene.spawnCatch(1);
+      catchIdx++;
     }
 
     // kiai (fever) sections

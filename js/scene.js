@@ -27,6 +27,8 @@ window.Scene = (function () {
   let getSongTime = function () { return -999; };
   let approach = 1.55;
   let mode = 'ambient';      // 'ambient' | 'play'
+  let phases = [];           // [{mode:'target'|'tunnel'|'catch'|'qte', start, end}]
+  let playPhase = 'target';  // phase under the current song time
 
   /* --- composition (matched to the reference frame) --------------------- */
   const HORIZON   = 0.520;   // waterline
@@ -54,6 +56,10 @@ window.Scene = (function () {
   let floaters = [];                           // judgment text at hit point
   let streaks = [];                            // Tsushima-style wind lines
   let streakTimer = 3.5;
+  let tunnelT = 0;                             // tunnel fly-through progress
+  let tunnelStars = [];                        // radial starfield
+  let catchItems = [];                         // clickable drifting hearts
+  let bannerFx = null;                         // {text, sub, t, dur}
   const REDUCED = window.matchMedia &&
     window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -613,7 +619,15 @@ window.Scene = (function () {
     if (approachSec) approach = approachSec;
   }
   function setClock(fn) { getSongTime = fn; }
-  function setMode(m) { mode = m; }
+  function setMode(m) { mode = m; if (m !== 'play') { playPhase = 'target'; catchItems = []; } }
+  function setPhases(arr) { phases = arr || []; }
+
+  function phaseAt(t) {
+    for (let i = 0; i < phases.length; i++) {
+      if (t >= phases[i].start && t < phases[i].end) return phases[i].mode;
+    }
+    return 'target';
+  }
 
   /** Heart reacts to a click. quality: 'perfect'|'great'|'good'|'stray' */
   function punch(quality) {
@@ -769,6 +783,42 @@ window.Scene = (function () {
       if (f.t >= 1) floaters.splice(i, 1);
     }
 
+    playPhase = (mode === 'play') ? phaseAt(getSongTime()) : 'target';
+
+    if (playPhase === 'tunnel') {
+      tunnelT = (tunnelT + dt * (kiai ? 0.34 : 0.22)) % 1;
+      if (!tunnelStars.length) {
+        for (let i = 0; i < 110; i++) {
+          tunnelStars.push({ ang: rr(0, 6.283), dist: rr(0.02, 1),
+                             spd: rr(0.25, 0.9), w: rr(1, 2.4), tone: rnd() });
+        }
+      }
+      for (let i = 0; i < tunnelStars.length; i++) {
+        const st = tunnelStars[i];
+        st.dist += st.spd * dt * (kiai ? 1.9 : 1.1);
+        if (st.dist > 1.25) { st.dist = rr(0.02, 0.08); st.ang = rr(0, 6.283); }
+      }
+    }
+
+    for (let i = catchItems.length - 1; i >= 0; i--) {
+      const c = catchItems[i];
+      if (c.dead) {
+        c.pop += dt * 3.4;
+        if (c.pop >= 1) catchItems.splice(i, 1);
+        continue;
+      }
+      c.swayP += dt * 2.2;
+      c.x += (c.vx + Math.sin(c.swayP) * 30) * dt;
+      c.y += c.vy * dt;
+      c.rot += c.rotV * dt;
+      if (c.y > H + 60 || c.x > W + 80) catchItems.splice(i, 1);
+    }
+
+    if (bannerFx) {
+      bannerFx.t += dt / bannerFx.dur;
+      if (bannerFx.t >= 1) bannerFx = null;
+    }
+
     streakTimer -= dt * (kiai ? 3.2 : 1);
     if (streakTimer <= 0) {
       spawnStreaks(kiai ? 3 : 1 + ((rnd() * 2) | 0));
@@ -828,6 +878,23 @@ window.Scene = (function () {
     ctx.save();
     ctx.translate(shx, shy);
 
+    if (playPhase === 'tunnel') {
+      // ---- the neon heart tunnel: a different world entirely ----
+      drawTunnel();
+      drawTarget();
+      drawShockRings();
+      drawNotes();
+      drawHeart();
+      drawSparks();
+      drawFloaters();
+      drawKiai();
+      drawBanner();
+      drawGrain();
+      drawVignette();
+      ctx.restore();
+      return;
+    }
+
     // the world slides a few px against the cursor — cheap cinematic depth.
     // Overdraw by the max offset so parallax never exposes canvas edges.
     if (backdropCv) {
@@ -840,14 +907,16 @@ window.Scene = (function () {
     drawStreaks();
     drawPetals();
     drawPlayScrim();
-    if (mode === 'play') drawTarget();
+    if (mode === 'play' && playPhase === 'target') drawTarget();
     drawShockRings();
     if (mode === 'play') drawNotes();
-    drawHeart();
+    drawCatch();
+    if (playPhase !== 'qte') drawHeart();
     drawSparks();
     drawFloaters();
     drawRays();
     drawKiai();
+    drawBanner();
     drawGrain();
     drawVignette();
     ctx.restore();
@@ -925,6 +994,204 @@ window.Scene = (function () {
     ctx.restore();
   }
 
+  /* ======================================================================
+     THE TUNNEL — GD-style fly-through. Concentric neon hearts race toward
+     the viewer; notes are born at the vanishing point and grow out to the
+     target ring. Same clock, same windows — a different world.
+     ====================================================================== */
+
+  function tunnelCentre() {
+    return { x: W / 2 + par.x * 26, y: centreY() + par.y * 18 };
+  }
+
+  function drawTunnel() {
+    const c = tunnelCentre();
+    const R = Math.max(W, H);
+
+    // deep-space backdrop with a warm core
+    const bg = ctx.createRadialGradient(c.x, c.y, 0, c.x, c.y, R * 0.75);
+    bg.addColorStop(0, '#2b0a33');
+    bg.addColorStop(0.45, '#170522');
+    bg.addColorStop(1, '#07010d');
+    ctx.fillStyle = bg;
+    ctx.fillRect(-10, -10, W + 20, H + 20);
+
+    // two slow nebulas so the black isn't dead
+    for (let i = 0; i < 2; i++) {
+      const a = tGlobal * (i ? 0.11 : -0.08) + i * 2.6;
+      const nx = c.x + Math.cos(a) * R * 0.18;
+      const ny = c.y + Math.sin(a) * R * 0.12;
+      const ng = ctx.createRadialGradient(nx, ny, 0, nx, ny, R * 0.4);
+      ng.addColorStop(0, i ? 'rgba(255,80,150,0.10)' : 'rgba(140,60,255,0.08)');
+      ng.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = ng;
+      ctx.fillRect(-10, -10, W + 20, H + 20);
+    }
+
+    // radial starfield streaking outward
+    ctx.save();
+    ctx.lineCap = 'round';
+    for (let i = 0; i < tunnelStars.length; i++) {
+      const st = tunnelStars[i];
+      const d0 = st.dist, d1 = st.dist + 0.04 + st.spd * 0.06 * st.dist;
+      const r0 = d0 * d0 * R * 0.72, r1 = d1 * d1 * R * 0.72;
+      const cs = Math.cos(st.ang), sn = Math.sin(st.ang);
+      ctx.globalAlpha = Math.min(1, st.dist * 1.6) * 0.8;
+      ctx.strokeStyle = st.tone > 0.65 ? '#ffd9a8' : st.tone > 0.3 ? '#ff9ec4' : '#e6d8ff';
+      ctx.lineWidth = st.w * (0.4 + st.dist);
+      ctx.beginPath();
+      ctx.moveTo(c.x + cs * r0, c.y + sn * r0);
+      ctx.lineTo(c.x + cs * r1, c.y + sn * r1);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    // the flying heart rings
+    const RINGS = 12;
+    const maxScale = (Math.max(W, H) / baseSize()) * 0.85;
+    ctx.save();
+    for (let i = RINGS - 1; i >= 0; i--) {
+      const z = ((i / RINGS) + tunnelT) % 1;          // 0 far → 1 at viewer
+      const sc = baseSize() * (0.05 + Math.pow(z, 2.1) * maxScale);
+      let a = z < 0.12 ? z / 0.12 : (z > 0.82 ? (1 - z) / 0.18 : 1);
+      a *= 0.5;
+      const gold = kiai && (i % 3 === 0);
+      ctx.globalAlpha = a * (gold ? 1 : 0.8);
+      ctx.lineWidth = 1.5 + z * 5;
+      ctx.strokeStyle = gold ? 'rgba(255,214,120,0.9)'
+                      : (i % 2 ? 'rgba(255,110,170,0.85)' : 'rgba(255,170,210,0.8)');
+      ctx.shadowColor = gold ? 'rgba(255,200,80,0.8)' : 'rgba(255,90,160,0.7)';
+      ctx.shadowBlur = 10 + z * 18 + beatFlash * 14;
+      const rot = (1 - z) * 0.5 * (i % 2 ? 1 : -1);
+      heartPath(ctx, c.x, c.y, sc, rot);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    // speed haze at the rim
+    const rim = ctx.createRadialGradient(c.x, c.y, R * 0.28, c.x, c.y, R * 0.7);
+    rim.addColorStop(0, 'rgba(20,2,26,0)');
+    rim.addColorStop(1, 'rgba(20,2,26,0.55)');
+    ctx.fillStyle = rim;
+    ctx.fillRect(-10, -10, W + 20, H + 20);
+  }
+
+  /* ======================================================================
+     CATCH — clickable hearts drifting through the vista
+     ====================================================================== */
+
+  function spawnCatch(n) {
+    for (let i = 0; i < (n || 1); i++) {
+      const fromTop = rnd() < 0.72;
+      catchItems.push({
+        x: fromTop ? rr(0.05, 0.85) * W : -50,
+        y: fromTop ? -50 : rr(0.08, 0.45) * H,
+        vx: rr(40, 120), vy: rr(50, 110),
+        r: rr(22, 34),
+        rot: rr(-0.4, 0.4), rotV: rr(-1.4, 1.4),
+        swayP: rr(0, 6.28),
+        dead: false, pop: 0
+      });
+    }
+  }
+
+  function catchHit(x, y) {
+    let best = -1, bestD = 1e9;
+    for (let i = 0; i < catchItems.length; i++) {
+      const c = catchItems[i];
+      if (c.dead) continue;
+      const d = Math.hypot(c.x - x, c.y - y);
+      if (d < bestD) { bestD = d; best = i; }
+    }
+    if (best >= 0 && bestD < catchItems[best].r * 2.2) {
+      const c = catchItems[best];
+      c.dead = true; c.pop = 0;
+      return { x: c.x, y: c.y };
+    }
+    return null;
+  }
+
+  function drawCatch() {
+    if (!catchItems.length) return;
+    ctx.save();
+    for (let i = 0; i < catchItems.length; i++) {
+      const c = catchItems[i];
+      ctx.save();
+      ctx.translate(c.x, c.y);
+      ctx.rotate(c.rot);
+      if (c.dead) {
+        ctx.globalAlpha = Math.max(0, 1 - c.pop);
+        const k = 1 + c.pop * 0.9;
+        ctx.scale(k, k);
+      } else {
+        const th = 1 + Math.sin(tGlobal * 5 + c.swayP) * 0.06;
+        ctx.scale(th, th);
+      }
+      ctx.shadowColor = 'rgba(255,80,150,0.95)';
+      ctx.shadowBlur = 20;
+      const gr = ctx.createLinearGradient(0, -c.r, 0, c.r);
+      gr.addColorStop(0, '#ff8fb6');
+      gr.addColorStop(1, '#e0175d');
+      ctx.fillStyle = gr;
+      heartPath(ctx, 0, 0, c.r, 0);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.lineWidth = 2.5;
+      ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+      ctx.stroke();
+      ctx.restore();
+    }
+    ctx.restore();
+  }
+
+  /* ======================================================================
+     phase banners — TUNNEL! / CATCH! / FINALE!
+     ====================================================================== */
+
+  function banner(text, sub) {
+    bannerFx = { text: text, sub: sub || '', t: 0, dur: 1.6 };
+    kiaiFlash = Math.max(kiaiFlash, 0.8);
+    if (!REDUCED) shake.amp = Math.max(shake.amp, 6);
+  }
+
+  function drawBanner() {
+    if (!bannerFx) return;
+    const b = bannerFx;
+    // pop in with overshoot, hang, fade
+    const inU = Math.min(1, b.t * 5);
+    const scale = 0.6 + 0.4 * (1 + Math.sin(Math.min(1, inU) * Math.PI * 0.5) * 0.0) * inU
+                + (inU >= 1 ? 0 : (1 - inU) * 0.0);
+    const overshoot = inU < 1 ? 1 + (1 - inU) * 0.35 : 1;
+    const a = b.t > 0.72 ? 1 - (b.t - 0.72) / 0.28 : 1;
+    const y = H * 0.30;
+    const px = Math.round(Math.min(W, H) * 0.085);
+
+    ctx.save();
+    ctx.globalAlpha = a;
+    ctx.translate(W / 2, y);
+    ctx.scale(overshoot, overshoot);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = '800 ' + px + 'px "Baloo 2", sans-serif';
+    const gr = ctx.createLinearGradient(0, -px * 0.6, 0, px * 0.6);
+    gr.addColorStop(0, '#fff6c9');
+    gr.addColorStop(0.5, '#ffd66b');
+    gr.addColorStop(1, '#e8992f');
+    ctx.shadowColor = 'rgba(60,0,40,0.9)';
+    ctx.shadowBlur = 18;
+    ctx.fillStyle = gr;
+    ctx.fillText(b.text, 0, 0);
+    ctx.shadowBlur = 0;
+    if (b.sub) {
+      ctx.font = '700 ' + Math.round(px * 0.30) + 'px "Quicksand", sans-serif';
+      ctx.fillStyle = 'rgba(255,240,248,0.95)';
+      ctx.shadowColor = 'rgba(60,0,40,0.9)';
+      ctx.shadowBlur = 10;
+      ctx.fillText(b.sub, 0, px * 0.85);
+    }
+    ctx.restore();
+  }
+
   /** Dusk pool behind the play field — keeps white-hot notes readable
       against the sunrise fog. Rides heart.alpha so it fades with play mode. */
   function drawPlayScrim() {
@@ -941,7 +1208,8 @@ window.Scene = (function () {
 
   /** The static outline showing exactly where a note must land. */
   function drawTarget() {
-    const cx = W / 2, cy = centreY(), s = baseSize();
+    const tc = playPhase === 'tunnel' ? tunnelCentre() : { x: W / 2, y: centreY() };
+    const cx = tc.x, cy = tc.y, s = baseSize();
     ctx.save();
     ctx.lineWidth = 2.5;
     if (kiai) {   // fever sections run gold, osu-style
@@ -994,7 +1262,20 @@ window.Scene = (function () {
 
       const prog = 1 - (dt / approach);
       const p = Math.max(0, Math.min(1.25, prog));
-      const scale = s * (START + (TARGET - START) * p);
+      const nMode = phaseAt(n.t);
+
+      if (nMode === 'qte') { drawQteNote(n, i, p, dt); continue; }
+
+      let scale;
+      if (nMode === 'tunnel') {
+        // born at the vanishing point, racing OUT to the ring
+        const c = tunnelCentre();
+        scale = s * (0.05 + Math.pow(p, 1.7) * (TARGET - 0.05));
+        ctx.save();
+        ctx.translate(c.x - cx, c.y - cy);
+      } else {
+        scale = s * (START + (TARGET - START) * p);
+      }
 
       // Far notes stay faint and near ones burn bright, so with eighth-note
       // patterns your eye still knows which ring is the one to hit.
@@ -1028,13 +1309,57 @@ window.Scene = (function () {
       ctx.shadowBlur = 0;
       ctx.fillStyle = 'rgba(255,190,225,' + (a * 0.055) + ')';
       ctx.fill();
+
+      if (nMode === 'tunnel') ctx.restore();
     }
+    ctx.restore();
+  }
+
+  /** QTE note: a scattered heart with a ring closing on it. Same clock. */
+  function qtePos(i) {
+    const m = Math.min(W, H);
+    const ang = i * 2.399963;                       // golden-angle spread
+    const rad = m * (0.17 + 0.09 * ((i * 0.618) % 1));
+    return { x: W / 2 + Math.cos(ang) * rad, y: centreY() + Math.sin(ang) * rad * 0.8 };
+  }
+
+  function drawQteNote(n, i, p, dt) {
+    const pos = qtePos(i);
+    const r = Math.min(W, H) * 0.062;
+    const inWin = Math.abs(dt) < 0.205;
+    let a = Math.min(1, p * 2.2);
+    if (dt < 0) a *= Math.max(0, 1 + dt / 0.34);
+
+    ctx.save();
+    ctx.translate(pos.x, pos.y);
+    ctx.globalAlpha = a;
+
+    ctx.shadowColor = inWin ? 'rgba(255,214,90,1)' : 'rgba(255,80,150,0.85)';
+    ctx.shadowBlur = inWin ? 30 : 16;
+    const gr = ctx.createLinearGradient(0, -r, 0, r);
+    gr.addColorStop(0, inWin ? '#ffe9a0' : '#ff8fb6');
+    gr.addColorStop(1, inWin ? '#ffb13d' : '#e0175d');
+    ctx.fillStyle = gr;
+    heartPath(ctx, 0, 0, r, 0);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.lineWidth = 2.5;
+    ctx.strokeStyle = 'rgba(255,255,255,0.8)';
+    ctx.stroke();
+
+    // the closing ring: 2.6× down to 1× exactly at the note's time
+    const ring = 2.6 - 1.6 * Math.min(1, p);
+    ctx.lineWidth = inWin ? 5.5 : 3;
+    ctx.strokeStyle = inWin ? 'rgba(255,226,120,0.95)' : 'rgba(255,255,255,0.7)';
+    heartPath(ctx, 0, 0, r * ring, 0);
+    ctx.stroke();
     ctx.restore();
   }
 
   function drawHeart() {
     if (heart.alpha < 0.012) return;
-    const cx = W / 2, cy = centreY();
+    const tc = playPhase === 'tunnel' ? tunnelCentre() : { x: W / 2, y: centreY() };
+    const cx = tc.x, cy = tc.y;
     const s = baseSize() * heart.scale;
     const dim = heart.sad;
 
@@ -1260,6 +1585,9 @@ window.Scene = (function () {
     setNotes: setNotes, setClock: setClock, setMode: setMode,
     punch: punch, pulse: pulse, burst: burst, celebrate: celebrate,
     setKiai: setKiai, judgment: judgment, milestone: milestone,
+    setPhases: setPhases, banner: banner,
+    spawnCatch: spawnCatch, catchHit: catchHit,
+    get _catch() { return catchItems; },   // test hook
     get heartCentre() { return { x: W / 2, y: centreY(), s: baseSize() }; }
   };
 })();
