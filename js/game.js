@@ -222,7 +222,7 @@ window.Game = (function () {
     if (m !== curMode) {
       curMode = m;
       const B = {
-        tunnel: ['THE TUNNEL', 'same beat — new world'],
+        lanterns: ['A THOUSAND WISHES', 'lanterns rising — stay on beat'],
         catch:  ['CATCH US ♡', 'click every heart!'],
         volley: ["CUPID'S VOLLEY", 'click as each arrow strikes'],
         flight: ['LOVE LETTER', 'click through every gate'],

@@ -56,7 +56,7 @@ window.Song = (function () {
     { len: 8,  feel: 'soft',   mode: 'target', notes: 'none'    },  // intro
     { len: 16, feel: 'groove', mode: 'target', notes: 'quarter' },  // verse A — home
     { len: 8,  feel: 'build',  mode: 'volley', notes: 'buildup' },  // build 1 — cupid arrows
-    { len: 16, feel: 'drop',   mode: 'tunnel', notes: 'drop', kiai: true },  // DROP 1
+    { len: 16, feel: 'drop',   mode: 'lanterns', notes: 'drop', kiai: true },  // DROP 1 — lantern night
     { len: 8,  feel: 'soft',   mode: 'catch',  notes: 'none'    },  // breakdown — catch
     { len: 8,  feel: 'groove', mode: 'flight', notes: 'swing'   },  // verse B — love letter
     { len: 8,  feel: 'build',  mode: 'flip',   notes: 'buildup' },  // build 2 — gravity portal

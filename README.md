@@ -6,14 +6,17 @@ section, every switch called by a gold banner:
 
 - **home** — hearts shrink onto the big heart; click on the beat
 - **cupid's volley** — arrows loosed from the wings; click as they strike
-- **the tunnel** — the vista rips away; notes race out of a neon void
+- **a thousand wishes** — night falls: paper lanterns rise over a mirror
+  lake, their reflections shimmering, fireflies over the water
 - **catch us** — drifting hearts, click them all, whiffs are free
 - **love letter** — a paper dart glides; click through every rose gate
 - **starfall** — comet hearts fall to a line… then a portal flips gravity
-- **our orbit** — a radar sweep; click as the pair passes each spark
+- **our orbit** — under a living aurora: pink and gold ribbons breathing
+  over moonlit peaks, shooting stars, a radar sweep you ride together
 - **sweet tooth** — truffles pop from a valentine box; click at the top
 - **in bloom** — roses unfurl along a vine; click at full bloom
-- **above the clouds** — the world becomes a sunrise cloudscape
+- **above the clouds** — a sunrise cloudscape with drifting puffs, bird
+  flocks, and a heart-shaped hot-air balloon
 - **the finale** — QTE rings sealing on scattered hearts
 
 One mechanic underneath it all — click on time — so it stays easy to *play*

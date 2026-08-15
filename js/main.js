@@ -65,7 +65,7 @@
         const ph = [
           { mode: 'target', start: 0,          end: dur * 0.22 },
           { mode: 'volley', start: dur * 0.22, end: dur * 0.32 },
-          { mode: 'tunnel', start: dur * 0.32, end: dur * 0.46 },
+          { mode: 'lanterns', start: dur * 0.32, end: dur * 0.46 },
           { mode: 'catch',  start: dur * 0.46, end: dur * 0.55 },
           { mode: 'flight', start: dur * 0.55, end: dur * 0.65 },
           { mode: 'flip',   start: dur * 0.65, end: dur * 0.75 },

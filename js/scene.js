@@ -22,6 +22,9 @@ window.Scene = (function () {
   let raf = 0, last = 0, tGlobal = 0;
 
   let backdropCv = null, treeCv = null, grainPat = null, cloudsCv = null;
+  let lanternCv = null, auroraCv = null;
+  const NIGHT_HZ = 0.60;    // lakeline of the lantern night
+  const PEAK_HZ  = 0.70;    // mountain line of the aurora night
 
   let notes = null;          // shared array of {t, judged} from Game
   let getSongTime = function () { return -999; };
@@ -57,10 +60,12 @@ window.Scene = (function () {
   let floaters = [];                           // judgment text at hit point
   let streaks = [];                            // Tsushima-style wind lines
   let streakTimer = 3.5;
-  let tunnelT = 0;                             // tunnel fly-through progress
-  let tunnelStars = [];                        // radial starfield
   let catchItems = [];                         // clickable drifting hearts
   let bannerFx = null;                         // {text, sub, t, dur}
+  let lanterns = [], fireflies = [];           // the lantern night
+  let shootStars = [], shootTimer = 4;         // the aurora night
+  let flock = null, flockTimer = 6;            // birds for the day worlds
+  let balloonU = 0;                            // heart balloon over the clouds
   const REDUCED = window.matchMedia &&
     window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -115,6 +120,9 @@ window.Scene = (function () {
     buildTree();
     buildGrain();
     buildCloudscape();
+    buildLanternNight();
+    buildAuroraNight();
+    lanterns = []; fireflies = [];
   }
 
   function offscreen() {
@@ -795,19 +803,58 @@ window.Scene = (function () {
 
     playPhase = (mode === 'play') ? phaseAt(getSongTime()) : 'target';
 
-    if (playPhase === 'tunnel') {
-      tunnelT = (tunnelT + dt * (kiai ? 0.34 : 0.22)) % 1;
-      if (!tunnelStars.length) {
-        for (let i = 0; i < 110; i++) {
-          tunnelStars.push({ ang: rr(0, 6.283), dist: rr(0.02, 1),
-                             spd: rr(0.25, 0.9), w: rr(1, 2.4), tone: rnd() });
+    const world = worldFor(playPhase);
+
+    if (world === 'lanterns') {
+      if (!lanterns.length) seedLanternLife();
+      const lift = kiai ? 1.6 : 1;
+      for (let i = 0; i < lanterns.length; i++) {
+        const L2 = lanterns[i];
+        L2.y -= (14 + L2.z * 30) * lift * dt;
+        L2.sway += L2.swaySpd * dt;
+        L2.flick += dt * rr(7, 11);
+        if (L2.y < -80) { L2.y = H + rr(30, 140); L2.x = rnd(); }
+      }
+      for (let i = 0; i < fireflies.length; i++) {
+        const f = fireflies[i];
+        f.p += dt * f.spd;
+        f.x += Math.cos(f.p * 1.7) * 9 * dt;
+        f.y += Math.sin(f.p * 2.3) * 7 * dt;
+      }
+    }
+
+    if (world === 'aurora') {
+      shootTimer -= dt;
+      if (shootTimer <= 0) {
+        shootTimer = rr(2.5, 6);
+        shootStars.push({ x: rr(0.1, 0.9) * W, y: rr(0.04, 0.3) * H,
+                          vx: rr(500, 850) * (rnd() < 0.5 ? -1 : 1),
+                          vy: rr(120, 260), life: 1 });
+      }
+    }
+    for (let i = shootStars.length - 1; i >= 0; i--) {
+      const st = shootStars[i];
+      st.life -= dt * 1.4;
+      if (st.life <= 0) { shootStars.splice(i, 1); continue; }
+      st.x += st.vx * dt; st.y += st.vy * dt;
+    }
+
+    if (world === 'vista' || world === 'clouds') {
+      flockTimer -= dt;
+      if (!flock && flockTimer <= 0) {
+        const n = 5 + ((rnd() * 3) | 0), birds = [];
+        for (let i = 0; i < n; i++) {
+          birds.push({ ox: -i * 26 - (i % 2) * 8, oy: (i % 2 ? 1 : -1) * i * 9,
+                       flap: rr(0, 6.28), size: rr(5, 8.5) });
         }
+        flock = { x: -W * 0.12, y: H * rr(0.14, 0.32), vx: rr(30, 46), birds: birds };
       }
-      for (let i = 0; i < tunnelStars.length; i++) {
-        const st = tunnelStars[i];
-        st.dist += st.spd * dt * (kiai ? 1.9 : 1.1);
-        if (st.dist > 1.25) { st.dist = rr(0.02, 0.08); st.ang = rr(0, 6.283); }
+      if (flock) {
+        flock.x += flock.vx * dt;
+        flock.birds.forEach(function (b) { b.flap += dt * 7; });
+        if (flock.x > W * 1.15) { flock = null; flockTimer = rr(9, 18); }
       }
+      balloonU = (balloonU + dt / 55) % 1.15;
     }
 
     for (let i = catchItems.length - 1; i >= 0; i--) {
@@ -888,40 +935,43 @@ window.Scene = (function () {
     ctx.save();
     ctx.translate(shx, shy);
 
-    if (playPhase === 'tunnel') {
-      // ---- the neon heart tunnel: a different world entirely ----
-      drawTunnel();
-      drawTarget();
-      drawShockRings();
-      drawNotes();
-      drawHeart();
-      drawSparks();
-      drawFloaters();
-      drawKiai();
-      drawBanner();
-      drawGrain();
-      drawVignette();
-      ctx.restore();
-      return;
-    }
-
     // the world slides a few px against the cursor — cheap cinematic depth.
     // Overdraw by the max offset so parallax never exposes canvas edges.
-    if (playPhase === 'sky' && cloudsCv) {
-      // ABOVE THE CLOUDS — the vista falls away beneath us
-      ctx.drawImage(cloudsCv, -8 + par.x * -6, -6 + par.y * -4, W + 16, H + 12);
-      drawSkyExtras();
-    } else if (backdropCv) {
-      ctx.drawImage(backdropCv, -8 + par.x * -6, -6 + par.y * -4, W + 16, H + 12);
-    } else { ctx.fillStyle = '#160a2c'; ctx.fillRect(-8, -6, W + 16, H + 12); }
+    const world = worldFor(playPhase);
+    const px2 = -8 + par.x * -6, py2 = -6 + par.y * -4;
 
-    drawCentreGlow();
-    drawBokeh();
-    if (playPhase !== 'sky') drawTree();
-    drawStreaks();
-    drawPetals();
+    if (world === 'lanterns' && lanternCv) {
+      ctx.drawImage(lanternCv, px2, py2, W + 16, H + 12);
+      drawLanternLife();
+      drawCentreGlow();
+    } else if (world === 'aurora' && auroraCv) {
+      ctx.drawImage(auroraCv, px2, py2, W + 16, H + 12);
+      drawAurora();
+      drawShootingStars();
+      drawCentreGlow();
+    } else if (world === 'clouds' && cloudsCv) {
+      // ABOVE THE CLOUDS — the vista falls away beneath us
+      ctx.drawImage(cloudsCv, px2, py2, W + 16, H + 12);
+      drawSkyExtras();
+      drawBalloon();
+      drawBirds('#ffffff');
+      drawCentreGlow();
+      drawBokeh();
+      drawPetals();
+    } else {
+      if (backdropCv) ctx.drawImage(backdropCv, px2, py2, W + 16, H + 12);
+      else { ctx.fillStyle = '#160a2c'; ctx.fillRect(-8, -6, W + 16, H + 12); }
+      drawCentreGlow();
+      drawBokeh();
+      drawTree();
+      drawStreaks();
+      drawPetals();
+      drawBirds('#3d1030');
+    }
+
     drawPlayScrim();
-    if (mode === 'play' && (playPhase === 'target' || playPhase === 'sky')) drawTarget();
+    if (mode === 'play' && (playPhase === 'target' || playPhase === 'sky' ||
+                            playPhase === 'lanterns')) drawTarget();
     if (mode === 'play') drawPhaseDressing();
     drawShockRings();
     if (mode === 'play') drawNotes();
@@ -931,7 +981,7 @@ window.Scene = (function () {
         playPhase !== 'sweet' && playPhase !== 'bloom') drawHeart();
     drawSparks();
     drawFloaters();
-    drawRays();
+    if (world === 'vista' || world === 'clouds') drawRays();
     drawKiai();
     drawBanner();
     drawGrain();
@@ -1011,86 +1061,415 @@ window.Scene = (function () {
     ctx.restore();
   }
 
-  /* ======================================================================
-     THE TUNNEL — GD-style fly-through. Concentric neon hearts race toward
-     the viewer; notes are born at the vanishing point and grow out to the
-     target ring. Same clock, same windows — a different world.
-     ====================================================================== */
-
-  function tunnelCentre() {
-    return { x: W / 2 + par.x * 26, y: centreY() + par.y * 18 };
+  function worldFor(m) {
+    return m === 'lanterns' ? 'lanterns'
+         : m === 'orbit'    ? 'aurora'
+         : m === 'sky'      ? 'clouds'
+         : 'vista';
   }
 
-  function drawTunnel() {
-    const c = tunnelCentre();
-    const R = Math.max(W, H);
+  /* ======================================================================
+     A THOUSAND WISHES — baked indigo night over a mirror lake; live paper
+     lanterns rise with their reflections. Painted, not plotted.
+     ====================================================================== */
 
-    // deep-space backdrop with a warm core
-    const bg = ctx.createRadialGradient(c.x, c.y, 0, c.x, c.y, R * 0.75);
-    bg.addColorStop(0, '#2b0a33');
-    bg.addColorStop(0.45, '#170522');
-    bg.addColorStop(1, '#07010d');
-    ctx.fillStyle = bg;
-    ctx.fillRect(-10, -10, W + 20, H + 20);
+  function buildLanternNight() {
+    const o = offscreen(), g = o.g;
+    seed = 550123;
+    const hz = H * NIGHT_HZ;
 
-    // two slow nebulas so the black isn't dead
-    for (let i = 0; i < 2; i++) {
-      const a = tGlobal * (i ? 0.11 : -0.08) + i * 2.6;
-      const nx = c.x + Math.cos(a) * R * 0.18;
-      const ny = c.y + Math.sin(a) * R * 0.12;
-      const ng = ctx.createRadialGradient(nx, ny, 0, nx, ny, R * 0.4);
-      ng.addColorStop(0, i ? 'rgba(255,80,150,0.10)' : 'rgba(140,60,255,0.08)');
-      ng.addColorStop(1, 'rgba(0,0,0,0)');
-      ctx.fillStyle = ng;
-      ctx.fillRect(-10, -10, W + 20, H + 20);
+    const sky = g.createLinearGradient(0, 0, 0, hz);
+    sky.addColorStop(0.00, '#0d0724');
+    sky.addColorStop(0.45, '#251040');
+    sky.addColorStop(0.80, '#4a1d5c');
+    sky.addColorStop(1.00, '#6d2c68');
+    g.fillStyle = sky;
+    g.fillRect(0, 0, W, hz + 1);
+
+    for (let i = 0; i < 160; i++) {
+      const x = rnd() * W, y = Math.pow(rnd(), 1.4) * hz * 0.92;
+      g.globalAlpha = rr(0.15, 0.85) * (1 - y / hz * 0.5);
+      g.fillStyle = rnd() < 0.12 ? '#ffe9c9' : '#f4ecff';
+      g.beginPath(); g.arc(x, y, rr(0.4, 1.5), 0, 6.283); g.fill();
+    }
+    g.globalAlpha = 1;
+
+    // the moon and her halo
+    const mx = W * 0.78, my = H * 0.16, mr = Math.min(W, H) * 0.055;
+    const halo = g.createRadialGradient(mx, my, 0, mx, my, mr * 5);
+    halo.addColorStop(0, 'rgba(255,240,220,0.35)');
+    halo.addColorStop(0.3, 'rgba(255,220,210,0.12)');
+    halo.addColorStop(1, 'rgba(255,220,210,0)');
+    g.fillStyle = halo;
+    g.fillRect(0, 0, W, hz);
+    const moon = g.createRadialGradient(mx - mr * 0.3, my - mr * 0.3, 0, mx, my, mr);
+    moon.addColorStop(0, '#fff6e8');
+    moon.addColorStop(0.8, '#f2dcc4');
+    moon.addColorStop(1, '#dcc0a8');
+    g.fillStyle = moon;
+    g.beginPath(); g.arc(mx, my, mr, 0, 6.283); g.fill();
+
+    // far treeline sleeping on the shore
+    treelineSoft(g, hz - H * 0.004, H * 0.05, 'rgba(16,8,34,0.9)', 7.7);
+
+    // the lake: a dark mirror holding the sky
+    const lake = g.createLinearGradient(0, hz, 0, H);
+    lake.addColorStop(0.00, '#2b1345');
+    lake.addColorStop(0.30, '#1c0c34');
+    lake.addColorStop(1.00, '#0d0620');
+    g.fillStyle = lake;
+    g.fillRect(0, hz, W, H - hz + 1);
+
+    // moon's reflection: a broken silver column
+    g.save();
+    g.globalCompositeOperation = 'lighter';
+    for (let y = hz; y < H; y += 3) {
+      const d = (y - hz) / (H - hz);
+      const w2 = mr * (0.5 + d * 1.6) * rr(0.5, 1.1);
+      const a = (1 - d) * 0.16 * (0.4 + 0.6 * Math.abs(Math.sin(y * 0.6)));
+      const gr = g.createLinearGradient(mx - w2, 0, mx + w2, 0);
+      gr.addColorStop(0, 'rgba(255,235,210,0)');
+      gr.addColorStop(0.5, 'rgba(255,240,220,' + a.toFixed(3) + ')');
+      gr.addColorStop(1, 'rgba(255,235,210,0)');
+      g.fillStyle = gr;
+      g.fillRect(mx - w2, y, w2 * 2, rr(1, 2.2));
+    }
+    g.restore();
+
+    // reeds in the near corner
+    g.strokeStyle = 'rgba(8,4,20,0.9)';
+    g.lineCap = 'round';
+    for (let i = 0; i < 14; i++) {
+      const x = W * (i < 8 ? rr(0.0, 0.14) : rr(0.88, 1.0));
+      const y0 = H * rr(0.9, 1.0);
+      const lean = rr(-0.12, 0.12);
+      g.lineWidth = rr(1.5, 3);
+      g.beginPath();
+      g.moveTo(x, y0);
+      g.quadraticCurveTo(x + lean * 60, y0 - H * 0.07, x + lean * 110, y0 - H * rr(0.1, 0.16));
+      g.stroke();
     }
 
-    // radial starfield streaking outward
+    lanternCv = o.c;
+  }
+
+  function seedLanternLife() {
+    lanterns = [];
+    for (let i = 0; i < 26; i++) {
+      lanterns.push({
+        x: rnd(), y: rr(0, H * 1.1), z: rr(0.3, 1),
+        sway: rr(0, 6.28), swaySpd: rr(0.4, 0.9),
+        tone: rnd(), heart: rnd() < 0.2, flick: rr(0, 9)
+      });
+    }
+    fireflies = [];
+    for (let i = 0; i < 22; i++) {
+      fireflies.push({ x: rnd() * W, y: H * rr(0.55, 0.95),
+                       p: rr(0, 6.28), spd: rr(0.5, 1.3) });
+    }
+  }
+
+  function drawLanternLife() {
+    const hz = H * NIGHT_HZ;
+    const sorted = lanterns.slice().sort(function (a, b) { return a.z - b.z; });
+
+    ctx.save();
+    for (let i = 0; i < sorted.length; i++) {
+      const L2 = sorted[i];
+      const x = L2.x * W + Math.sin(L2.sway) * 26 * L2.z;
+      const y = L2.y;
+      const w2 = (13 + 24 * L2.z);
+      const h2 = w2 * 1.3;
+      const warm = L2.tone > 0.3;
+      const glow = 0.5 + 0.5 * Math.sin(L2.flick) * 0.3 + beatFlash * 0.5;
+
+      // reflection first, so the lantern draws over it near the lakeline
+      if (y < hz && y > hz - H * 0.5) {
+        const ry = hz + (hz - y) * 0.5;
+        if (ry < H) {
+          ctx.globalAlpha = 0.10 * L2.z;
+          const rg = ctx.createRadialGradient(x, ry, 0, x, ry, w2 * 2.6);
+          rg.addColorStop(0, warm ? 'rgba(255,190,110,0.9)' : 'rgba(255,140,190,0.9)');
+          rg.addColorStop(1, 'rgba(255,160,120,0)');
+          ctx.fillStyle = rg;
+          ctx.beginPath();
+          ctx.ellipse(x, ry, w2 * 1.6, w2 * 3.2, 0, 0, 6.283);
+          ctx.fill();
+        }
+      }
+
+      // halo
+      ctx.globalAlpha = (0.22 + 0.18 * L2.z) * glow;
+      const hg = ctx.createRadialGradient(x, y, 0, x, y, w2 * 3);
+      hg.addColorStop(0, warm ? 'rgba(255,200,120,0.95)' : 'rgba(255,150,195,0.95)');
+      hg.addColorStop(1, 'rgba(255,180,120,0)');
+      ctx.fillStyle = hg;
+      ctx.beginPath(); ctx.arc(x, y, w2 * 3, 0, 6.283); ctx.fill();
+
+      // body
+      ctx.globalAlpha = 0.7 + 0.3 * L2.z;
+      const bg2 = ctx.createLinearGradient(x, y - h2 / 2, x, y + h2 / 2);
+      if (warm) {
+        bg2.addColorStop(0, '#ffe9b8');
+        bg2.addColorStop(0.55, '#ffb45e');
+        bg2.addColorStop(1, '#e07830');
+      } else {
+        bg2.addColorStop(0, '#ffd9ea');
+        bg2.addColorStop(0.55, '#ff8fb6');
+        bg2.addColorStop(1, '#d6488a');
+      }
+      ctx.fillStyle = bg2;
+      if (L2.heart) {
+        heartPath(ctx, x, y, w2 * 0.72, Math.sin(L2.sway) * 0.14);
+        ctx.fill();
+      } else {
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate(Math.sin(L2.sway) * 0.1);
+        roundRectPath(ctx, -w2 / 2, -h2 / 2, w2, h2, w2 * 0.28);
+        ctx.fill();
+        // ribs
+        ctx.globalAlpha *= 0.5;
+        ctx.strokeStyle = warm ? 'rgba(200,110,40,0.8)' : 'rgba(190,60,120,0.8)';
+        ctx.lineWidth = 1;
+        for (let r2 = -1; r2 <= 1; r2++) {
+          ctx.beginPath();
+          ctx.moveTo(-w2 / 2 + 2, r2 * h2 * 0.22);
+          ctx.lineTo(w2 / 2 - 2, r2 * h2 * 0.22);
+          ctx.stroke();
+        }
+        // flame mouth
+        ctx.globalAlpha = glow;
+        ctx.fillStyle = '#fff2c9';
+        ctx.beginPath();
+        ctx.ellipse(0, h2 / 2 - 2, w2 * 0.2, 3.4, 0, 0, 6.283);
+        ctx.fill();
+        ctx.restore();
+      }
+    }
+
+    // fireflies wink over the water
+    for (let i = 0; i < fireflies.length; i++) {
+      const f = fireflies[i];
+      const tw = 0.3 + 0.7 * Math.abs(Math.sin(f.p * 2.1));
+      ctx.globalAlpha = tw * 0.8;
+      ctx.fillStyle = '#ffe9a8';
+      ctx.shadowColor = 'rgba(255,220,130,0.9)';
+      ctx.shadowBlur = 7;
+      ctx.beginPath(); ctx.arc(f.x, f.y, 1.6, 0, 6.283); ctx.fill();
+      ctx.shadowBlur = 0;
+    }
+    ctx.restore();
+  }
+
+  /* ======================================================================
+     THE AURORA — baked mountain night; live ribbons of pink and gold
+     breathing across the stars, with the odd shooting star.
+     ====================================================================== */
+
+  function buildAuroraNight() {
+    const o = offscreen(), g = o.g;
+    seed = 660321;
+    const hz = H * PEAK_HZ;
+
+    const sky = g.createLinearGradient(0, 0, 0, H);
+    sky.addColorStop(0.00, '#0a0d2c');
+    sky.addColorStop(0.45, '#1c1244');
+    sky.addColorStop(0.72, '#33195a');
+    sky.addColorStop(1.00, '#1a0e38');
+    g.fillStyle = sky;
+    g.fillRect(0, 0, W, H);
+
+    for (let i = 0; i < 180; i++) {
+      const x = rnd() * W, y = Math.pow(rnd(), 1.3) * hz;
+      g.globalAlpha = rr(0.15, 0.9);
+      g.fillStyle = rnd() < 0.1 ? '#ffe0c9' : '#eef0ff';
+      g.beginPath(); g.arc(x, y, rr(0.4, 1.6), 0, 6.283); g.fill();
+    }
+    g.globalAlpha = 1;
+
+    // crescent moon, small and high
+    const mx = W * 0.18, my = H * 0.14, mr = Math.min(W, H) * 0.032;
+    g.fillStyle = '#f6ecd8';
+    g.beginPath(); g.arc(mx, my, mr, 0, 6.283); g.fill();
+    g.fillStyle = '#141040';
+    g.beginPath(); g.arc(mx + mr * 0.45, my - mr * 0.2, mr * 0.85, 0, 6.283); g.fill();
+
+    // two mountain ridges, snow edges catching star light
+    function ridge2(baseY, amp, colour, edge, phase) {
+      g.beginPath();
+      g.moveTo(-10, H + 10);
+      let x = -10;
+      const pts = [];
+      while (x <= W + 10) {
+        const u = x / W;
+        const y = baseY - Math.abs(Math.sin(u * 4.2 + phase) * 0.6 +
+                                   Math.sin(u * 9.1 + phase * 2.2) * 0.4) * amp;
+        pts.push([x, y]);
+        g.lineTo(x, y);
+        x += 12;
+      }
+      g.lineTo(W + 10, H + 10);
+      g.closePath();
+      g.fillStyle = colour;
+      g.fill();
+      g.strokeStyle = edge;
+      g.lineWidth = 1.5;
+      g.beginPath();
+      for (let i = 0; i < pts.length; i++) {
+        if (i === 0) g.moveTo(pts[i][0], pts[i][1]); else g.lineTo(pts[i][0], pts[i][1]);
+      }
+      g.stroke();
+    }
+    ridge2(hz - H * 0.015, H * 0.14, '#1d1140', 'rgba(200,180,255,0.28)', 1.7);
+    ridge2(hz + H * 0.02, H * 0.10, '#0e081f', 'rgba(190,160,255,0.18)', 4.9);
+
+    // valley mist
+    const mist = g.createLinearGradient(0, hz, 0, H);
+    mist.addColorStop(0, 'rgba(120,90,190,0.16)');
+    mist.addColorStop(1, 'rgba(120,90,190,0)');
+    g.fillStyle = mist;
+    g.fillRect(0, hz, W, H - hz);
+
+    auroraCv = o.c;
+  }
+
+  const AURORA_BANDS = [
+    { base: 0.30, amp: 0.065, k: 2.1, spd: 0.45, len: 0.26, col: '255,110,175' },
+    { base: 0.20, amp: 0.05,  k: 3.2, spd: -0.3, len: 0.20, col: '255,205,120' },
+    { base: 0.38, amp: 0.055, k: 1.6, spd: 0.65, len: 0.18, col: '185,140,255' }
+  ];
+
+  function drawAurora() {
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    for (let b = 0; b < AURORA_BANDS.length; b++) {
+      const A = AURORA_BANDS[b];
+      const yAt = function (x) {
+        const u = x / W;
+        return H * A.base + Math.sin(u * 6.28 * A.k + tGlobal * A.spd + b * 2.1) * H * A.amp;
+      };
+      const lenAt = function (x) {
+        const u = x / W;
+        return H * A.len * (0.75 + 0.25 * Math.sin(u * 9 + tGlobal * 0.8 + b));
+      };
+
+      // the curtain body
+      ctx.globalAlpha = 0.30 + beatFlash * 0.14;
+      ctx.beginPath();
+      for (let x = -10; x <= W + 10; x += 16) {
+        const y = yAt(x);
+        if (x === -10) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      for (let x = W + 10; x >= -10; x -= 16) {
+        ctx.lineTo(x, yAt(x) + lenAt(x));
+      }
+      ctx.closePath();
+      const gr = ctx.createLinearGradient(0, H * (A.base - A.amp), 0, H * (A.base + A.len));
+      gr.addColorStop(0, 'rgba(' + A.col + ',0.85)');
+      gr.addColorStop(1, 'rgba(' + A.col + ',0)');
+      ctx.fillStyle = gr;
+      ctx.fill();
+
+      // bright upper edge
+      ctx.globalAlpha = 0.75;
+      ctx.strokeStyle = 'rgba(' + A.col + ',0.9)';
+      ctx.lineWidth = 2.5;
+      ctx.shadowColor = 'rgba(' + A.col + ',1)';
+      ctx.shadowBlur = 18;
+      ctx.beginPath();
+      for (let x = -10; x <= W + 10; x += 16) {
+        const y = yAt(x);
+        if (x === -10) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+
+      // falling curtain streaks
+      ctx.globalAlpha = 0.16;
+      ctx.lineWidth = 2.5;
+      for (let k = 0; k < 20; k++) {
+        const x = ((k / 20) + Math.sin(tGlobal * 0.11 + k * 1.7 + b) * 0.02) * W;
+        const y = yAt(x);
+        ctx.beginPath();
+        ctx.moveTo(x, y + 4);
+        ctx.lineTo(x, y + lenAt(x) * 0.85);
+        ctx.stroke();
+      }
+    }
+    ctx.restore();
+  }
+
+  function drawShootingStars() {
     ctx.save();
     ctx.lineCap = 'round';
-    for (let i = 0; i < tunnelStars.length; i++) {
-      const st = tunnelStars[i];
-      const d0 = st.dist, d1 = st.dist + 0.04 + st.spd * 0.06 * st.dist;
-      const r0 = d0 * d0 * R * 0.72, r1 = d1 * d1 * R * 0.72;
-      const cs = Math.cos(st.ang), sn = Math.sin(st.ang);
-      ctx.globalAlpha = Math.min(1, st.dist * 1.6) * 0.8;
-      ctx.strokeStyle = st.tone > 0.65 ? '#ffd9a8' : st.tone > 0.3 ? '#ff9ec4' : '#e6d8ff';
-      ctx.lineWidth = st.w * (0.4 + st.dist);
-      ctx.beginPath();
-      ctx.moveTo(c.x + cs * r0, c.y + sn * r0);
-      ctx.lineTo(c.x + cs * r1, c.y + sn * r1);
-      ctx.stroke();
+    for (let i = 0; i < shootStars.length; i++) {
+      const st = shootStars[i];
+      const a = Math.max(0, Math.min(1, st.life));
+      const tx = st.x - st.vx * 0.14, ty = st.y - st.vy * 0.14;
+      const gr = ctx.createLinearGradient(st.x, st.y, tx, ty);
+      gr.addColorStop(0, 'rgba(255,244,230,' + (a * 0.95) + ')');
+      gr.addColorStop(1, 'rgba(255,244,230,0)');
+      ctx.strokeStyle = gr;
+      ctx.lineWidth = 2.2;
+      ctx.beginPath(); ctx.moveTo(st.x, st.y); ctx.lineTo(tx, ty); ctx.stroke();
     }
     ctx.restore();
+  }
 
-    // the flying heart rings
-    const RINGS = 12;
-    const maxScale = (Math.max(W, H) / baseSize()) * 0.85;
+  /* ======================================================================
+     birds + the heart balloon — small lives for the day worlds
+     ====================================================================== */
+
+  function drawBirds(colour) {
+    if (!flock) return;
     ctx.save();
-    for (let i = RINGS - 1; i >= 0; i--) {
-      const z = ((i / RINGS) + tunnelT) % 1;          // 0 far → 1 at viewer
-      const sc = baseSize() * (0.05 + Math.pow(z, 2.1) * maxScale);
-      let a = z < 0.12 ? z / 0.12 : (z > 0.82 ? (1 - z) / 0.18 : 1);
-      a *= 0.5;
-      const gold = kiai && (i % 3 === 0);
-      ctx.globalAlpha = a * (gold ? 1 : 0.8);
-      ctx.lineWidth = 1.5 + z * 5;
-      ctx.strokeStyle = gold ? 'rgba(255,214,120,0.9)'
-                      : (i % 2 ? 'rgba(255,110,170,0.85)' : 'rgba(255,170,210,0.8)');
-      ctx.shadowColor = gold ? 'rgba(255,200,80,0.8)' : 'rgba(255,90,160,0.7)';
-      ctx.shadowBlur = 10 + z * 18 + beatFlash * 14;
-      const rot = (1 - z) * 0.5 * (i % 2 ? 1 : -1);
-      heartPath(ctx, c.x, c.y, sc, rot);
+    ctx.strokeStyle = colour;
+    ctx.globalAlpha = colour === '#ffffff' ? 0.85 : 0.55;
+    ctx.lineWidth = 1.8;
+    ctx.lineCap = 'round';
+    for (let i = 0; i < flock.birds.length; i++) {
+      const b = flock.birds[i];
+      const x = flock.x + b.ox, y = flock.y + b.oy + Math.sin(b.flap * 0.5) * 3;
+      const f = Math.abs(Math.sin(b.flap)) * b.size * 0.8 + 1;
+      ctx.beginPath();
+      ctx.moveTo(x - b.size, y);
+      ctx.quadraticCurveTo(x - b.size * 0.4, y - f, x, y);
+      ctx.quadraticCurveTo(x + b.size * 0.4, y - f, x + b.size, y);
       ctx.stroke();
     }
     ctx.restore();
+  }
 
-    // speed haze at the rim
-    const rim = ctx.createRadialGradient(c.x, c.y, R * 0.28, c.x, c.y, R * 0.7);
-    rim.addColorStop(0, 'rgba(20,2,26,0)');
-    rim.addColorStop(1, 'rgba(20,2,26,0.55)');
-    ctx.fillStyle = rim;
-    ctx.fillRect(-10, -10, W + 20, H + 20);
+  function drawBalloon() {
+    const u = balloonU;
+    if (u > 1) return;
+    const x = W * (-0.06 + u * 1.12);
+    const y = H * 0.30 + Math.sin(u * 9) * H * 0.02;
+    const s2 = Math.min(W, H) * 0.036;
+    ctx.save();
+    ctx.globalAlpha = 0.94;
+    // envelope: a heart
+    ctx.shadowColor = 'rgba(255,120,170,0.6)';
+    ctx.shadowBlur = 14;
+    const gr = ctx.createLinearGradient(x, y - s2, x, y + s2);
+    gr.addColorStop(0, '#ff9ec4');
+    gr.addColorStop(1, '#e02a68');
+    ctx.fillStyle = gr;
+    heartPath(ctx, x, y, s2, 0);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    // basket + lines
+    ctx.strokeStyle = 'rgba(90,40,20,0.8)';
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.moveTo(x - s2 * 0.5, y + s2 * 0.5); ctx.lineTo(x - s2 * 0.24, y + s2 * 1.28);
+    ctx.moveTo(x + s2 * 0.5, y + s2 * 0.5); ctx.lineTo(x + s2 * 0.24, y + s2 * 1.28);
+    ctx.stroke();
+    ctx.fillStyle = '#8a5a30';
+    roundRectPath(ctx, x - s2 * 0.3, y + s2 * 1.24, s2 * 0.6, s2 * 0.42, 3);
+    ctx.fill();
+    ctx.restore();
   }
 
   /* ======================================================================
@@ -1213,6 +1592,8 @@ window.Scene = (function () {
       against the sunrise fog. Rides heart.alpha so it fades with play mode. */
   function drawPlayScrim() {
     if (heart.alpha < 0.02) return;
+    const w2 = worldFor(playPhase);
+    if (w2 === 'lanterns' || w2 === 'aurora') return;
     const cx = W / 2, cy = centreY();
     const r = baseSize() * spawnScale() * 1.5;
     const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
@@ -1225,8 +1606,7 @@ window.Scene = (function () {
 
   /** The static outline showing exactly where a note must land. */
   function drawTarget() {
-    const tc = playPhase === 'tunnel' ? tunnelCentre() : { x: W / 2, y: centreY() };
-    const cx = tc.x, cy = tc.y, s = baseSize();
+    const cx = W / 2, cy = centreY(), s = baseSize();
     ctx.save();
     ctx.lineWidth = 2.5;
     if (kiai) {   // fever sections run gold, osu-style
@@ -1289,16 +1669,7 @@ window.Scene = (function () {
       if (nMode === 'flip')   { drawFlipNote(n, i, p, dt); continue; }
       if (nMode === 'orbit')  { drawOrbitNote(n, i, p, dt); continue; }
 
-      let scale;
-      if (nMode === 'tunnel') {
-        // born at the vanishing point, racing OUT to the ring
-        const c = tunnelCentre();
-        scale = s * (0.05 + Math.pow(p, 1.7) * (TARGET - 0.05));
-        ctx.save();
-        ctx.translate(c.x - cx, c.y - cy);
-      } else {
-        scale = s * (START + (TARGET - START) * p);
-      }
+      const scale = s * (START + (TARGET - START) * p);
 
       // Far notes stay faint and near ones burn bright, so with eighth-note
       // patterns your eye still knows which ring is the one to hit.
@@ -1332,8 +1703,6 @@ window.Scene = (function () {
       ctx.shadowBlur = 0;
       ctx.fillStyle = 'rgba(255,190,225,' + (a * 0.055) + ')';
       ctx.fill();
-
-      if (nMode === 'tunnel') ctx.restore();
     }
     ctx.restore();
   }
@@ -2060,8 +2429,7 @@ window.Scene = (function () {
 
   function drawHeart() {
     if (heart.alpha < 0.012) return;
-    const tc = playPhase === 'tunnel' ? tunnelCentre() : { x: W / 2, y: centreY() };
-    const cx = tc.x, cy = tc.y;
+    const cx = W / 2, cy = centreY();
     const s = baseSize() * heart.scale;
     const dim = heart.sad;
 
