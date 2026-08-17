@@ -20,6 +20,7 @@ window.AudioEngine = (function () {
 
   /* --- one-shot SFX bus (hit sounds) ------------------------------------ */
   let sfxGain = null;
+  let sfxNoise = null;
 
   function init() {
     if (ctx) return ctx;
@@ -33,6 +34,12 @@ window.AudioEngine = (function () {
     sfxGain = ctx.createGain();
     sfxGain.gain.value = 0.5;
     sfxGain.connect(master);
+
+    // half a second of noise for swish effects
+    const n = Math.floor(ctx.sampleRate * 0.5);
+    sfxNoise = ctx.createBuffer(1, n, ctx.sampleRate);
+    const d = sfxNoise.getChannelData(0);
+    for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1;
 
     return ctx;
   }
@@ -154,6 +161,25 @@ window.AudioEngine = (function () {
     o.start(t); o.stop(t + dur + 0.02);
   }
 
+  /** Band-passed noise sweep — the sound of ribbon and paper. */
+  function swish(fromHz, toHz, dur, gain) {
+    if (!ctx || ctx.state !== 'running' || !sfxNoise) return;
+    const t = ctx.currentTime;
+    const s = ctx.createBufferSource();
+    s.buffer = sfxNoise;
+    s.loop = true;
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass'; bp.Q.value = 1.2;
+    bp.frequency.setValueAtTime(Math.max(40, fromHz), t);
+    bp.frequency.exponentialRampToValueAtTime(Math.max(40, toHz), t + dur);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(gain, t + dur * 0.22);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    s.connect(bp); bp.connect(g); g.connect(sfxGain);
+    s.start(t); s.stop(t + dur + 0.05);
+  }
+
   const SFX = {
     perfect: function () { blip(880, 0.16, 'triangle', 0.34); blip(1320, 0.13, 'sine', 0.2); },
     great:   function () { blip(740, 0.14, 'triangle', 0.28); },
@@ -162,6 +188,30 @@ window.AudioEngine = (function () {
     unlock:  function () {
       [523.25, 659.25, 783.99, 1046.5].forEach(function (f, i) {
         setTimeout(function () { blip(f, 0.5, 'triangle', 0.26); }, i * 95);
+      });
+    },
+    /* the unwrapping gets its own voices — no repeats */
+    untie: function () {                       // ribbon sliding free
+      swish(1500, 300, 0.45, 0.5);
+      setTimeout(function () { blip(520, 0.18, 'triangle', 0.16); }, 260);
+    },
+    boxopen: function () {                     // light spilling out
+      swish(320, 2600, 0.6, 0.42);
+      [523.25, 659.25, 783.99, 1046.5, 1318.51, 1567.98].forEach(function (f, i) {
+        setTimeout(function () { blip(f, 0.42, 'triangle', 0.2); }, i * 55);
+      });
+    },
+    fanfare: function () {                     // the reveal itself
+      const chords = [
+        [523.25, 659.25, 783.99],
+        [698.46, 880.00, 1046.50],
+        [783.99, 987.77, 1174.66],
+        [1046.50, 1318.51, 1567.98]
+      ];
+      chords.forEach(function (ch, i) {
+        setTimeout(function () {
+          ch.forEach(function (f) { blip(f, 0.55, 'triangle', 0.15); });
+        }, i * 150);
       });
     }
   };

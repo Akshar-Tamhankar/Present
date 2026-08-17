@@ -88,7 +88,8 @@
         const grid = [];
         for (let t = r.lead; t < r.duration - 2; t += spb) grid.push(t);
         song = { beats: r.beats, beatGrid: grid, kiai: r.kiai || [],
-                 phases: r.phases || [], spb: r.spb };
+                 phases: r.phases || [], spb: r.spb,
+                 endAt: r.duration - 0.6 };
       }
       loaded = true;
       return song;
@@ -134,6 +135,7 @@
       kiai: song.kiai,
       phases: song.phases,
       spb: song.spb,
+      endAt: song.endAt,
       approach: CONFIG.approachTime,
       offsetMs: CONFIG.audioOffsetMs,
       onFinish: onRoundEnd

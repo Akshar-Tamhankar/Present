@@ -110,7 +110,7 @@ window.Gift = (function () {
         (Math.sin(ang) * 300 + 260) + 'px) rotate(' + (dx > 0 ? 300 : -300) + 'deg) scale(.6)';
       bow.style.opacity = '0';
       ribbons.classList.add('untied');
-      AudioEngine.sfx.good();
+      AudioEngine.sfx.untie();
       hint.classList.add('hide');
       setTimeout(function () {
         hint.textContent = 'now lift the lid ↑';
@@ -175,7 +175,7 @@ window.Gift = (function () {
       lid.style.opacity = '0';
       hint.classList.add('hide');
       prompt.classList.add('hide');
-      AudioEngine.sfx.unlock();
+      AudioEngine.sfx.boxopen();
       Scene.celebrate();
       setTimeout(function () { onOpen(); }, 900);
     }

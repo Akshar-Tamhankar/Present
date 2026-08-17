@@ -65,7 +65,7 @@ window.Song = (function () {
     { len: 8,  feel: 'groove', mode: 'bloom',  notes: 'swing'   },  // roses on the vine
     { len: 8,  feel: 'build',  mode: 'sky',    notes: 'lift'    },  // above the clouds, rising
     { len: 8,  feel: 'finale', mode: 'qte',    notes: 'qte'     },  // finale
-    { len: 4,  feel: 'soft',   mode: 'target', notes: 'none'    }   // outro
+    { len: 6,  feel: 'stinger', mode: 'target', notes: 'none'   }   // the last word
   ];
 
   const PATTERNS = {
@@ -312,6 +312,27 @@ window.Song = (function () {
       // crash on every section boundary except the very start
       if (b > 0) crash(L, R, sr, t0, soft ? 0.10 : 0.16);
 
+      /* the last word: one enormous downbeat, then our melody, alone -------
+         a music-box reprise of the verse over the ring-out. The climax and
+         the quiet button after it. */
+      if (blk.feel === 'stinger') {
+        kick(L, R, sr, t0, 1.0);
+        crash(L, R, sr, t0, 0.3);
+        bass(L, R, sr, t0, N.C3 / 2, spb * 3.4, 0.5, spb, false);
+        [N.C4, N.E4, N.G4, N.C5, N.E5].forEach(function (f) {
+          lead(L, R, sr, t0, f, spb * 3.2, 0.085, spb * 99);
+        });
+        pad(L, R, sr, t0, [N.C4, N.E4, N.G4, N.C5], spb * 4.6, 0.15, spb, false);
+        // the reprise: E — D — C, like the first thing she heard
+        pluck(L, R, sr, at(base + 2.0), N.E5, spb * 1.3, 0.24, -0.2);
+        pluck(L, R, sr, at(base + 3.0), N.D5, spb * 1.3, 0.24, 0.2);
+        pluck(L, R, sr, at(base + 4.0), N.C5, spb * 2.4, 0.27, 0);
+        pluck(L, R, sr, at(base + 5.0), N.C6, spb * 1.6, 0.10, 0.4);
+        cursor += blk.len;
+        barCursor += bars;
+        continue;
+      }
+
       /* chords + bass, one chord per bar */
       for (let bar = 0; bar < bars; bar++) {
         const chord = PROG[(barCursor + bar) % PROG.length];
@@ -348,12 +369,27 @@ window.Song = (function () {
         }
       }
       if (isFinale) {
-        // half-time: kick on 1, big snare on 3
+        // half-time: kick on 1, big snare on 3, hats keeping the blood up
         for (let i = 0; i < blk.len; i += 4) {
-          kick(L, R, sr, at(base + i), 0.9);
-          snare(L, R, sr, at(base + i + 2), 0.4);
-          crash(L, R, sr, at(base + i), 0.08);
+          kick(L, R, sr, at(base + i), 0.95);
+          snare(L, R, sr, at(base + i + 2), 0.45);
+          snare(L, R, sr, at(base + i + 2) + 0.024, 0.2);   // flam
+          crash(L, R, sr, at(base + i), 0.09);
         }
+        for (let i = 0; i < blk.len * 2; i++) {
+          hat(L, R, sr, at(base + i / 2), i % 2 ? 0.07 : 0.11);
+        }
+        // octave chord stabs answering the big snare
+        for (let bar = 0; bar < bars; bar++) {
+          const chord = PROG[(barCursor + bar) % PROG.length];
+          [0, 2].forEach(function (beat) {
+            chord.pad.forEach(function (f) {
+              lead(L, R, sr, at(base + bar * 4 + beat), f * 2, spb * 0.85, 0.05, spb);
+            });
+          });
+        }
+        // and the whole section climbs into the last hit
+        riser(L, R, sr, at(base + blk.len - 4), 4 * spb, 0.3);
       }
       if (isBuild) {
         roll(L, R, sr, t0, blk.len, spb, 0.26);

@@ -28,6 +28,7 @@ window.Game = (function () {
   let inKiai = false;
   let phases = [];
   let curMode = 'target';
+  let announced = 'target';
   let catchPlan = [];        // spawn times for catch hearts
   let catchIdx = 0;
   let catchTotal = 0;
@@ -77,6 +78,7 @@ window.Game = (function () {
     Scene.setPhases(phases);
     if (opts.spb) Scene.setSpb(opts.spb);
     curMode = 'target';
+    announced = 'target';
     catchPlan = [];
     catchIdx = 0;
     phases.forEach(function (ph) {
@@ -95,7 +97,8 @@ window.Game = (function () {
     const k = Math.pow(1.25, mercy);
     win = { perfect: base.perfect * k, great: base.great * k, good: base.good * k };
 
-    endsAt = (notes.length ? notes[notes.length - 1].t : 0) + 1.6;
+    endsAt = opts.endAt ||
+             (notes.length ? notes[notes.length - 1].t : 0) + 1.6;
     countInFrom = notes.length ? notes[0].t : 0;
 
     stats = { perfect: 0, great: 0, good: 0, miss: 0, stray: 0, caught: 0,
@@ -214,13 +217,20 @@ window.Game = (function () {
       } else if (n.t > t + 0.5) break;
     }
 
-    // phase engine: swap gameplay mode with the song's sections
-    let m = 'target';
-    for (let i = 0; i < phases.length; i++) {
-      if (t >= phases[i].start && t < phases[i].end) { m = phases[i].mode; break; }
-    }
-    if (m !== curMode) {
-      curMode = m;
+    // phase engine: the world swaps exactly on the musical boundary…
+    const modeAt = function (tt) {
+      for (let i = 0; i < phases.length; i++) {
+        if (tt >= phases[i].start && tt < phases[i].end) return phases[i].mode;
+      }
+      return 'target';
+    };
+    curMode = modeAt(t);
+
+    // …but the BANNER telegraphs one approach-length ahead, so the call
+    // lands BEFORE the new section's notes are already on screen.
+    const ahead = modeAt(t + approach);
+    if (ahead !== announced) {
+      announced = ahead;
       const B = {
         lanterns: ['A THOUSAND WISHES', 'lanterns rising — stay on beat'],
         catch:  ['CATCH US ♡', 'click every heart!'],
@@ -233,8 +243,8 @@ window.Game = (function () {
         sky:    ['ABOVE THE CLOUDS', 'same rules — new heights'],
         qte:    ['THE FINALE', 'strike when the ring seals'],
         target: ['BACK TO US', '']
-      }[m];
-      if (B && B[0] !== 'BACK TO US' || (B && t > 8)) Scene.banner(B[0], B[1]);
+      }[ahead];
+      if (B && (B[0] !== 'BACK TO US' || t > 8)) Scene.banner(B[0], B[1]);
     }
 
     // scheduled catch hearts

@@ -155,7 +155,7 @@ window.FX = (function () {
         scale: [0.82, 1],
         duration: 950,
         easing: 'spring(1, 65, 11, 2)',
-        begin: function () { AudioEngine.sfx.unlock(); },
+        begin: function () { AudioEngine.sfx.fanfare(); },
         complete: function () {
           ticket.classList.add('settled');   // hands idle bob + shine to CSS
           Scene.celebrate();
