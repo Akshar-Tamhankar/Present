@@ -160,12 +160,19 @@
       return;
     }
 
-    // Didn't fill the meter — stay warm about it.
+    // Fell short — stay warm about it either way.
     const s = res.stats;
-    $('#result-title').textContent = res.fill > 0.8 ? 'so close!' : 'not quite yet';
-    $('#result-sub').textContent = res.attempts >= 2
-      ? "i'll make it a little easier this time. promise."
-      : 'the meter needs to be full. you\'ve got this.';
+    if (res.died) {
+      $('#result-title').textContent = 'out of hearts!';
+      $('#result-sub').textContent = res.attempts >= 2
+        ? "okay okay — i'll go a little easier on you. one more?"
+        : 'five hearts, remember — steady on the beat wins them back.';
+    } else {
+      $('#result-title').textContent = res.fill > 0.8 ? 'so close!' : 'not quite yet';
+      $('#result-sub').textContent = res.attempts >= 2
+        ? "i'll make it a little easier this time. promise."
+        : 'the meter needs to be full. you\'ve got this.';
+    }
     $('#result-stats').innerHTML =
       stat('perfect', s.perfect) + stat('lovely', s.great) + stat('good', s.good) +
       stat('missed', s.miss) + stat('best combo', s.best);

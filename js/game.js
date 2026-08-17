@@ -33,6 +33,12 @@ window.Game = (function () {
   let catchIdx = 0;
   let catchTotal = 0;
 
+  // the losing condition: five hearts. Misses spend them; combo restores.
+  const HP_MAX = 5;
+  const HP_HEAL_EVERY = 8;   // every 8 combo wins one heart back
+  let hp = HP_MAX;
+  let died = false;
+
   let onFinish = function () {};
 
   const VALUE = { perfect: 1.0, great: 0.85, good: 0.6 };
@@ -53,6 +59,7 @@ window.Game = (function () {
     els.comboNum  = document.getElementById('combo-num');
     els.judge     = document.getElementById('judge');
     els.countin   = document.getElementById('countin');
+    els.hp        = document.getElementById('hp');
   }
 
   /**
@@ -103,6 +110,9 @@ window.Game = (function () {
 
     stats = { perfect: 0, great: 0, good: 0, miss: 0, stray: 0, caught: 0,
               combo: 0, best: 0, units: 0, total: notes.length + catchTotal };
+    hp = HP_MAX;
+    died = false;
+    renderHp();
 
     Scene.setNotes(notes, approach);
     renderHud(true);
@@ -148,6 +158,7 @@ window.Game = (function () {
         Scene.punch('great');
         AudioEngine.sfx.great();
         if (stats.combo > 0 && stats.combo % 10 === 0) Scene.milestone(stats.combo);
+        if (stats.combo > 0 && stats.combo % HP_HEAL_EVERY === 0) heal();
         renderHud();
       } else {
         AudioEngine.sfx.good();     // whiffs are free during the frenzy
@@ -183,7 +194,47 @@ window.Game = (function () {
     AudioEngine.sfx[q]();
     Scene.judgment(q, praise(q), hitX, hitY);
     if (stats.combo > 0 && stats.combo % 10 === 0) Scene.milestone(stats.combo);
+    if (stats.combo > 0 && stats.combo % HP_HEAL_EVERY === 0) heal();
     renderHud();
+  }
+
+  function heal() {
+    if (hp >= HP_MAX) return;
+    hp++;
+    renderHp('heal');
+    Scene.judgment('perfect', '+ ♥', window.innerWidth / 2, window.innerHeight * 0.16);
+  }
+
+  function damage() {
+    hp--;
+    renderHp('hurt');
+    Scene.damage();
+    if (hp <= 0 && !died) {
+      died = true;
+      fail();
+    }
+  }
+
+  function fail() {
+    stop();
+    AudioEngine.fadeOut(0.5);
+    const acc = stats.total ? (stats.perfect + stats.great + stats.good) / stats.total : 0;
+    onFinish({ passed: false, died: true, fill: fillRatio(), accuracy: acc,
+               stats: stats, attempts: attempts });
+  }
+
+  function renderHp(fxClass) {
+    if (!els.hp) return;
+    let html = '';
+    for (let i = 0; i < HP_MAX; i++) {
+      html += '<span class="' + (i < hp ? '' : 'off') + '">💗</span>';
+    }
+    els.hp.innerHTML = html;
+    if (fxClass) {
+      els.hp.classList.remove('hurt', 'heal');
+      void els.hp.offsetWidth;
+      els.hp.classList.add(fxClass);
+    }
   }
 
   function judgeStray(hitX, hitY) {
@@ -214,6 +265,8 @@ window.Game = (function () {
         stats.combo = 0;
         Scene.judgment('miss', praise('miss'), null, null);
         renderHud();
+        damage();
+        if (!running) return;          // the spark ran out mid-frame
       } else if (n.t > t + 0.5) break;
     }
 

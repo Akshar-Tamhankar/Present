@@ -278,6 +278,30 @@ kbd{
   text-shadow:0 1px 5px rgba(40,0,30,.95),0 0 14px rgba(40,0,30,.8);
 }
 
+/* --- the five hearts ---------------------------------------------------- */
+.hp{
+  margin-top:.45em;display:flex;justify-content:center;gap:.4em;
+  font-size:17px;line-height:1;
+}
+.hp span{
+  filter:drop-shadow(0 0 6px rgba(255,80,140,.9));
+  transition:transform .25s var(--ease-back),filter .25s ease,opacity .25s ease;
+}
+.hp span.off{
+  filter:grayscale(1) brightness(.55);
+  opacity:.45;transform:scale(.82);
+}
+.hp.hurt{animation:hpHurt .45s var(--ease-out)}
+@keyframes hpHurt{
+  0%{transform:translateX(0)}
+  20%{transform:translateX(-7px)}
+  45%{transform:translateX(6px)}
+  70%{transform:translateX(-3px)}
+  100%{transform:translateX(0)}
+}
+.hp.heal span:not(.off){animation:hpHeal .5s var(--ease-back)}
+@keyframes hpHeal{40%{transform:scale(1.35)}}
+
 .combo-wrap{
   position:absolute;left:50%;top:50%;
   transform:translate(-50%,-50%) translateY(clamp(150px,20vh,230px));
@@ -517,7 +541,9 @@ kbd{
 
 /* --- the bow (2D overlay riding the float wrapper) --------------------- */
 .bow{
-  position:absolute;left:50.5%;top:-2px;
+  /* pinned where the gold strap crosses the lid's front edge — the 3D
+     rotateY pushes that point well left of the container midline */
+  position:absolute;left:65px;top:-36px;
   width:0;height:0;
   transform:translate(-50%,-50%);
   cursor:grab;z-index:6;

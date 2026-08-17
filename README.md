@@ -21,7 +21,9 @@ section, every switch called by a gold banner:
 
 One mechanic underneath it all — click on time — so it stays easy to *play*
 while never looking the same twice. Tuned kind by default (wide windows, low
-meter bar, strays keep your combo, retries widen everything). Then the gift box: drag the bow, lift the
+meter bar, strays keep your combo, retries widen everything) — but it CAN be
+lost: misses spend one of **five hearts**, combos win them back, and running
+dry ends the run with a warm retry. Then the gift box: drag the bow, lift the
 lid — **HAPPY 6 MONTH ANNIVERSARY!!!!** and a golden **redeem-a-kiss**
 ticket.
 

@@ -23,6 +23,7 @@ window.Scene = (function () {
 
   let backdropCv = null, treeCv = null, grainPat = null, cloudsCv = null;
   let lanternCv = null, auroraCv = null;
+  let dressCv = null, dressCtx = null;   // scratch for dressing crossfades
   const NIGHT_HZ = 0.60;    // lakeline of the lantern night
   const PEAK_HZ  = 0.70;    // mountain line of the aurora night
 
@@ -56,6 +57,7 @@ window.Scene = (function () {
   const shake = { amp: 0, t: 0 };             // decaying screen shake
   let kiai = false;                            // osu-style fever sections
   let kiaiFlash = 0;                           // white pulse on kiai entry
+  let hurtFlash = 0;                           // crimson pulse on losing a heart
   let beatFlash = 0;                           // per-beat glow during kiai
   let floaters = [];                           // judgment text at hit point
   let streaks = [];                            // Tsushima-style wind lines
@@ -123,6 +125,8 @@ window.Scene = (function () {
     buildLanternNight();
     buildAuroraNight();
     lanterns = []; fireflies = [];
+    const d = offscreen();
+    dressCv = d.c; dressCtx = d.g;
   }
 
   function offscreen() {
@@ -685,6 +689,12 @@ window.Scene = (function () {
   }
 
   /** Combo milestone: big gold callout + burst + kick. */
+  /** Lost a heart: crimson edge pulse + a kick of shake. */
+  function damage() {
+    hurtFlash = 1;
+    if (!REDUCED) shake.amp = Math.max(shake.amp, 7);
+  }
+
   function milestone(n) {
     floater('combo', n + ' COMBO', W / 2, centreY() - baseSize() * 2.3);
     burst('perfect');
@@ -793,6 +803,7 @@ window.Scene = (function () {
     shake.t += dt * 34;
     shake.amp = Math.max(0, shake.amp - dt * 26);
     kiaiFlash = Math.max(0, kiaiFlash - dt * 1.8);
+    hurtFlash = Math.max(0, hurtFlash - dt * 2.6);
     beatFlash = Math.max(0, beatFlash - dt * 3.4);
 
     for (let i = floaters.length - 1; i >= 0; i--) {
@@ -2068,13 +2079,51 @@ window.Scene = (function () {
     ctx.restore();
   }
 
+  const DRESSINGS = {
+    volley: function () { drawVolleyDressing(); },
+    flight: function () { drawFlightDressing(); },
+    flip:   function () { drawFlipDressing(); },
+    orbit:  function () { drawOrbitDressing(); },
+    sweet:  function () { drawSweetDressing(); },
+    bloom:  function () { drawBloomDressing(); }
+  };
+
+  const DRESS_IN = 0.9, DRESS_OUT = 0.35;
+
+  /** 0→1 as a mode's section approaches, 1 inside it, →0 shortly after —
+      so a stage set never pops in while the last phase is still resolving. */
+  function dressingAlpha(mode, t) {
+    let a = 0;
+    for (let i = 0; i < phases.length; i++) {
+      const ph = phases[i];
+      if (ph.mode !== mode) continue;
+      if (t < ph.start) {
+        a = Math.max(a, 1 - (ph.start - t) / DRESS_IN);
+      } else if (t < ph.end) {
+        return 1;
+      } else {
+        a = Math.max(a, 1 - (t - ph.end) / DRESS_OUT);
+      }
+    }
+    return Math.max(0, Math.min(1, a));
+  }
+
   function drawPhaseDressing() {
-    if (playPhase === 'volley') drawVolleyDressing();
-    else if (playPhase === 'flight') drawFlightDressing();
-    else if (playPhase === 'flip') drawFlipDressing();
-    else if (playPhase === 'orbit') drawOrbitDressing();
-    else if (playPhase === 'sweet') drawSweetDressing();
-    else if (playPhase === 'bloom') drawBloomDressing();
+    const t = getSongTime();
+    for (const m in DRESSINGS) {
+      const a = dressingAlpha(m, t);
+      if (a <= 0.01) continue;
+      if (a >= 0.995) { DRESSINGS[m](); continue; }
+      // partial: render to scratch, blit with alpha
+      dressCtx.clearRect(0, 0, W, H);
+      const real = ctx;
+      ctx = dressCtx;
+      try { DRESSINGS[m](); } finally { ctx = real; }
+      ctx.save();
+      ctx.globalAlpha = a;
+      ctx.drawImage(dressCv, 0, 0, W, H);
+      ctx.restore();
+    }
   }
 
   /* ======================================================================
@@ -2127,6 +2176,10 @@ window.Scene = (function () {
   }
 
   function drawSweetNote(n, i, p, dt) {
+    // short pre-roll: a truffle rising mid-aurora reads as a glitch, so it
+    // only starts once its own stage set is fading in
+    p = Math.max(0, Math.min(1.25, 1 - dt / DRESS_IN));
+    if (p <= 0) return;
     const c = sweetCell(i);
     const rise = 60 * Math.min(1, p);
     const y = c.y - rise;
@@ -2222,6 +2275,8 @@ window.Scene = (function () {
   }
 
   function drawBloomNote(n, i, p, dt) {
+    p = Math.max(0, Math.min(1.25, 1 - dt / DRESS_IN));
+    if (p <= 0) return;
     const x = W * (0.12 + 0.76 * nhash(i));
     const y = vineY(x);
     const near = Math.abs(dt) < 0.24;
@@ -2395,6 +2450,8 @@ window.Scene = (function () {
   }
 
   function drawQteNote(n, i, p, dt) {
+    p = Math.max(0, Math.min(1.25, 1 - dt / DRESS_IN));
+    if (p <= 0) return;
     const pos = qtePos(i);
     const r = Math.min(W, H) * 0.062;
     const inWin = Math.abs(dt) < 0.205;
@@ -2585,6 +2642,14 @@ window.Scene = (function () {
   /* --- kiai: the fever overlay ------------------------------------------ */
 
   function drawKiai() {
+    if (hurtFlash > 0.005) {
+      const g = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.2,
+                                         W / 2, H / 2, Math.max(W, H) * 0.72);
+      g.addColorStop(0, 'rgba(160,10,50,0)');
+      g.addColorStop(1, 'rgba(160,10,50,' + (hurtFlash * 0.4).toFixed(3) + ')');
+      ctx.fillStyle = g;
+      ctx.fillRect(-10, -10, W + 20, H + 20);
+    }
     if (kiaiFlash > 0.005) {
       ctx.fillStyle = 'rgba(255,240,220,' + (kiaiFlash * 0.28).toFixed(3) + ')';
       ctx.fillRect(-10, -10, W + 20, H + 20);
@@ -2654,7 +2719,7 @@ window.Scene = (function () {
     mount: mount,
     setNotes: setNotes, setClock: setClock, setMode: setMode,
     punch: punch, pulse: pulse, burst: burst, celebrate: celebrate,
-    setKiai: setKiai, judgment: judgment, milestone: milestone,
+    setKiai: setKiai, judgment: judgment, milestone: milestone, damage: damage,
     setPhases: setPhases, setSpb: setSpb, banner: banner,
     spawnCatch: spawnCatch, catchHit: catchHit,
     get _catch() { return catchItems; },   // test hook
