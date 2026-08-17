@@ -74,12 +74,12 @@ near the end.
 Also in `js/config.js`:
 
 - `windows` — hit timing tolerances in ms (bigger = kinder)
-- `fillThreshold` — how much of a perfect run fills the meter (0.55 default)
-- `mercyAfter` — after this many misses of the win, windows widen 25% per try
+- `fillThreshold` — how much of a perfect run fills the meter (0.45 default)
+- `mercyAfter` — after this many failed runs, windows widen 25% per try
 
-The game can't be lost, only retried — it's a gift, not a test. There's also
-a **calibrate** screen (link under "i'm ready") that measures audio latency
-and stores it in the browser.
+Losing costs nothing but a retry, and every retry is a little kinder — it's
+a gift with stakes, not a test. There's also a **calibrate** screen (link
+under "i'm ready") that measures audio latency and stores it in the browser.
 
 ## Put it on a real link
 
